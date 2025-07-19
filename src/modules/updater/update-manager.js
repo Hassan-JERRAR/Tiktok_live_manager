@@ -31,6 +31,7 @@ class UpdateManager extends EventEmitter {
             owner: "Hassan-JERRAR",
             repo: "Tiktok_live_manager",
             private: true,
+            allowPrerelease: true, // Permet les releases draft/pre-release
         };
 
         // Ajouter le token si disponible
@@ -38,7 +39,16 @@ class UpdateManager extends EventEmitter {
             updateConfig.token = process.env.GH_TOKEN;
         }
 
+        // Configuration spéciale pour les repositories privés
         autoUpdater.setFeedURL(updateConfig);
+
+        // Configuration des headers d'authentification pour les assets
+        if (process.env.GH_TOKEN) {
+            autoUpdater.requestHeaders = {
+                Authorization: `token ${process.env.GH_TOKEN}`,
+                "User-Agent": "TikTok-Live-Manager-Updater",
+            };
+        }
 
         // Configuration des logs
         autoUpdater.logger = logger;
@@ -50,6 +60,16 @@ class UpdateManager extends EventEmitter {
         });
 
         autoUpdater.on("update-available", (info) => {
+            const currentVersion = require("../../../package.json").version;
+            logger.info(`Mise à jour détectée - Actuelle: ${currentVersion}, Disponible: ${info.version}`);
+            
+            // Vérifier si c'est vraiment une nouvelle version
+            if (this.compareVersions(currentVersion, info.version) >= 0) {
+                logger.info("La version disponible n'est pas plus récente que la version actuelle");
+                this.emit("update-not-available", { version: currentVersion });
+                return;
+            }
+            
             logger.info("Mise à jour disponible:", info.version);
             this.updateAvailable = true;
             this.emit("update-available", info);
@@ -73,12 +93,27 @@ class UpdateManager extends EventEmitter {
             logMessage += ` (${progressObj.transferred}/${progressObj.total})`;
             logger.info(logMessage);
             this.emit("download-progress", progressObj);
+            
+            // Envoyer le progrès au renderer
+            if (this.mainWindow) {
+                this.mainWindow.webContents.send('update-download-progress', {
+                    percent: progressObj.percent,
+                    transferred: progressObj.transferred,
+                    total: progressObj.total
+                });
+            }
         });
 
         autoUpdater.on("update-downloaded", (info) => {
             logger.info("Mise à jour téléchargée");
             this.updateDownloaded = true;
             this.emit("update-downloaded", info);
+            
+            // Notifier le renderer que le téléchargement est terminé
+            if (this.mainWindow) {
+                this.mainWindow.webContents.send('update-downloaded', info);
+            }
+            
             this.showUpdateDownloadedDialog(info);
         });
     }
@@ -88,6 +123,10 @@ class UpdateManager extends EventEmitter {
             if (manual) {
                 logger.info("Vérification manuelle des mises à jour");
             }
+
+            // Vérifier d'abord manuellement les versions pour éviter les faux positifs
+            const currentVersion = require("../../../package.json").version;
+            logger.info(`Version actuelle: ${currentVersion}`);
 
             const result = await autoUpdater.checkForUpdatesAndNotify();
 
@@ -111,7 +150,16 @@ class UpdateManager extends EventEmitter {
     downloadUpdate() {
         if (this.updateAvailable) {
             logger.info("Début du téléchargement de la mise à jour");
+            this.emit("download-started");
+            
+            // Afficher une notification de début de téléchargement
+            if (this.mainWindow) {
+                this.mainWindow.webContents.send('update-download-started');
+            }
+            
             autoUpdater.downloadUpdate();
+        } else {
+            logger.warn("Tentative de téléchargement sans mise à jour disponible");
         }
     }
 
@@ -120,6 +168,22 @@ class UpdateManager extends EventEmitter {
             logger.info("Installation de la mise à jour et redémarrage");
             autoUpdater.quitAndInstall();
         }
+    }
+
+    // Fonction pour comparer les versions (semver)
+    compareVersions(version1, version2) {
+        const v1parts = version1.split('.').map(Number);
+        const v2parts = version2.split('.').map(Number);
+        
+        for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
+            const v1part = v1parts[i] || 0;
+            const v2part = v2parts[i] || 0;
+            
+            if (v1part > v2part) return 1;
+            if (v1part < v2part) return -1;
+        }
+        
+        return 0; // Versions identiques
     }
 
     showUpdateAvailableDialog(info) {
@@ -158,9 +222,9 @@ class UpdateManager extends EventEmitter {
         const options = {
             type: "info",
             title: "Mise à jour prête",
-            message: "La mise à jour a été téléchargée.",
-            detail: "Redémarrez l'application pour appliquer la mise à jour.",
-            buttons: ["Redémarrer maintenant", "Plus tard"],
+            message: `La mise à jour vers la version ${info.version} a été téléchargée avec succès.`,
+            detail: "Cliquez sur 'Installer et redémarrer' pour appliquer la mise à jour maintenant, ou fermez cette boîte pour l'installer plus tard.",
+            buttons: ["Installer et redémarrer", "Plus tard"],
             defaultId: 0,
             cancelId: 1,
         };
@@ -207,6 +271,36 @@ class UpdateManager extends EventEmitter {
             updateDownloaded: this.updateDownloaded,
             version: require("../../../package.json").version,
         };
+    }
+
+    // Publier une release draft pour la rendre disponible
+    async publishRelease(releaseId) {
+        const token = process.env.GH_TOKEN;
+        if (!token) {
+            throw new Error("Token GitHub manquant");
+        }
+
+        try {
+            const response = await fetch(`https://api.github.com/repos/Hassan-JERRAR/Tiktok_live_manager/releases/${releaseId}`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `token ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ draft: false })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Erreur HTTP: ${response.status}`);
+            }
+
+            logger.info(`Release ${releaseId} publiée avec succès`);
+            return await response.json();
+        } catch (error) {
+            logger.error("Erreur lors de la publication de la release:", error);
+            throw error;
+        }
     }
 
     async enableAutoUpdate(enabled) {

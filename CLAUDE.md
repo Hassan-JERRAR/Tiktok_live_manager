@@ -26,6 +26,12 @@ npm run build           # Build for current platform
 npm run build-win       # Build for Windows (NSIS installer)
 npm run build-mac       # Build for macOS (DMG)
 npm run build-linux     # Build for Linux (AppImage)
+
+# Publishing (with auto-updater)
+npm run build-publish           # Build and publish for current platform
+npm run build-publish-win       # Build and publish for Windows
+npm run build-publish-mac       # Build and publish for macOS
+npm run build-publish-linux     # Build and publish for Linux
 ```
 
 ## Architecture Overview
@@ -37,18 +43,24 @@ npm run build-linux     # Build for Linux (AppImage)
 - **renderer.js**: Frontend logic for UI interactions
 
 ### Core Modules (src/modules/)
-- **TikTokManager**: Handles TikTok Live connection, chat events, and reconnection logic
-- **PrinterManager**: Manages ESC/POS printer communication and print queue
-- **UserManager**: Manages verified users list and user operations
-- **MessageManager**: Handles chat message storage and filtering
-- **NotificationManager**: System notifications and user feedback
+- **TikTokManager**: Handles TikTok Live connection, chat events, automatic reconnection with exponential backoff
+- **PrinterManager**: Manages ESC/POS printer communication, print queue system, and reference generation
+- **UserManager**: Manages verified users list with validation (alphanumeric, dots, underscores, 1-30 chars)
+- **MessageManager**: Processes chat messages, detects commands (!print, !adduser, !stats), provides enrichment
+- **NotificationManager**: Centralizes system notifications with auto-removal timers
+- **UpdateManager**: Handles OTA updates with private repository support via GitHub token
 
 ### Services (src/services/)
-- **DataService**: Centralized data management, file I/O, and statistics
-- **FileManager**: File operations with backup functionality
+- **DataService**: Central data hub managing all persistence, statistics, and Set↔Array conversions
+- **FileManager**: File operations with atomic writes and automatic backup (.backup files)
+
+### Utilities (src/utils/)
+- **EventEmitter**: Central event bus for inter-module communication
+- **Logger**: Structured logging with different levels for development/production
 
 ### Configuration (src/config/)
-- **app-config.js**: Centralized configuration for all modules
+- **app-config.js**: Centralized configuration for all modules and services
+- **update-config.js**: OTA update configuration with GitHub token and custom server support
 
 ### Data Storage
 - **data/verified-users.json**: List of verified TikTok users (Set converted to Array)
@@ -92,40 +104,80 @@ Frontend receives these events:
 - `connection-status`: TikTok connection state
 - `print-completed`: Print job completion
 
-## File Organization
+## Architecture Patterns
 
-### Legacy Structure (main.js)
-- All functionality in single file
-- Direct IPC handler implementation
+### Singleton Pattern
+- All modules and services implemented as singletons
+- Pattern: `const instance = new ClassName(); module.exports = instance;`
+- Ensures consistent state across the application
+
+### Event-Driven Communication
+- Central EventEmitter for inter-module communication
+- Modules emit events using `module:action` format
+- Loose coupling between modules through events
+- Main process forwards events to renderer via `sendToRenderer`
+
+### Data Flow Pattern
+```
+TikTok Live → TikTokManager → MessageManager → DataService → FileManager
+                  ↓              ↓                ↓
+EventEmitter → NotificationManager → UI Renderer
+```
+
+### Error Handling Strategy
+- Graceful degradation when hardware (printer) unavailable
+- Conditional module loading to prevent build errors
+- Try-catch blocks with specific error types and structured logging
+- EventEmitter for error propagation across modules
+
+### File Organization
+
+#### Legacy Structure (main.js)
+- All functionality in single file with direct IPC handlers
 - Suitable for quick fixes and simple changes
+- Auto-loads TikTok and printer modules with fallback handling
 
-### Modular Structure (src/)
-- Separation of concerns by functionality
-- Event-driven architecture using EventEmitter
-- Singleton pattern for managers
-- Easier testing and maintenance
+#### Modular Structure (src/)
+- Event-driven architecture with separation of concerns
+- Centralized configuration and logging
+- Atomic file operations with backup functionality
 
-## Common Development Tasks
+## Command System
 
-### Adding New TikTok Events
-1. Add event handler in `TikTokManager.setupEventListeners()`
-2. Process data in dedicated handler method
-3. Emit events via EventEmitter for UI updates
+### Chat Commands (Verified Users Only)
+- `!print pseudo amount description`: Triggers label printing with validation
+- `!adduser username`: Adds user to verified list with validation
+- `!stats`: Shows application statistics
+- Commands processed in `MessageManager` with real-time execution
 
-### Adding Print Features
-1. Extend `PrinterManager.generatePrintData()` for new fields
-2. Update print template in `executePrint()` method
-3. Modify data storage schema if needed
+### Print System
+- Asynchronous print queue prevents blocking operations
+- Reference generation: REF-#### format with padded counter
+- ESC/POS thermal printer via USB with automatic availability checks
+- Print history tracking with timestamps and transaction records
 
-### Adding New Users Features
-1. Extend `UserManager` methods for new operations
-2. Update `DataService` for persistence
-3. Add corresponding IPC handlers in main process
+### User Validation
+- Username rules: alphanumeric, dots, underscores, 1-30 characters
+- Verified users stored as Set in memory, Array in JSON for persistence
+- Default verified user: "vonix.xz"
+
+## OTA Update System
+
+### Configuration Requirements
+- GitHub token in `.env` file: `GITHUB_TOKEN=your_token_here`
+- Private repository: Hassan-JERRAR/Tiktok_live_manager
+- Auto-updater checks every 24 hours by default
+
+### Update Flow
+1. UpdateManager checks for releases via GitHub API
+2. Downloads updates using electron-updater
+3. Prompts user for installation on app quit
+4. Supports prerelease and custom update servers
 
 ## Important Notes
 
-- Printer requires ESC/POS compatible thermal printer via USB
-- TikTok connection depends on user "izatcolis" being live
-- File operations include automatic .backup creation
-- All modules use singleton pattern for state consistency
-- Error handling includes graceful degradation when hardware unavailable
+- **Hardware Dependencies**: Printer requires ESC/POS compatible thermal printer via USB
+- **TikTok Dependency**: Connection requires user "izatcolis" to be live on TikTok
+- **Data Persistence**: Automatic .backup file creation for all JSON operations
+- **Module Loading**: Conditional loading prevents build errors when dependencies unavailable
+- **Development Mode**: Use `npm run dev` to enable DevTools and detailed logging
