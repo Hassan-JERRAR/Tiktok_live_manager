@@ -50,6 +50,10 @@
                     <i class="fas fa-history"></i>
                     Historique
                 </button>
+                <button class="nav-tab" data-tab="settings">
+                    <i class="fas fa-cog"></i>
+                    Paramètres
+                </button>
             </nav>
 
             <!-- Main Content -->
@@ -248,6 +252,93 @@
                             <p class="no-history">
                                 Aucune impression dans l'historique
                             </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div class="tab-content" id="settings">
+                    <div class="settings-container">
+                        <div class="settings-header">
+                            <h2>Paramètres de l'Application</h2>
+                        </div>
+                        
+                        <!-- Section Mises à jour -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <i class="fas fa-download"></i>
+                                <h3>Mises à jour</h3>
+                            </div>
+                            
+                            <div class="update-info">
+                                <div class="current-version">
+                                    <span>Version actuelle: </span>
+                                    <strong id="currentVersion">1.0.0</strong>
+                                </div>
+                                <div class="update-status" id="updateStatus">
+                                    <span>Vérification des mises à jour...</span>
+                                </div>
+                            </div>
+                            
+                            <div class="update-controls">
+                                <button class="btn btn-primary" id="checkUpdatesBtn">
+                                    <i class="fas fa-sync"></i>
+                                    Vérifier les mises à jour
+                                </button>
+                                <button class="btn btn-success" id="downloadUpdateBtn" style="display: none;">
+                                    <i class="fas fa-download"></i>
+                                    Télécharger la mise à jour
+                                </button>
+                                <button class="btn btn-warning" id="installUpdateBtn" style="display: none;">
+                                    <i class="fas fa-power-off"></i>
+                                    Installer et redémarrer
+                                </button>
+                            </div>
+                            
+                            <div class="update-progress" id="updateProgress" style="display: none;">
+                                <div class="progress-bar">
+                                    <div class="progress-fill" id="progressFill"></div>
+                                </div>
+                                <div class="progress-text">
+                                    <span id="progressText">Téléchargement en cours...</span>
+                                    <span id="progressPercent">0%</span>
+                                </div>
+                            </div>
+                            
+                            <div class="auto-update-setting">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="autoUpdateToggle">
+                                    <span class="slider"></span>
+                                </label>
+                                <span>Téléchargement automatique des mises à jour</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Section Informations -->
+                        <div class="settings-section">
+                            <div class="section-header">
+                                <i class="fas fa-info-circle"></i>
+                                <h3>Informations</h3>
+                            </div>
+                            
+                            <div class="app-info">
+                                <div class="info-row">
+                                    <span>Application:</span>
+                                    <strong>TikTok Live Manager</strong>
+                                </div>
+                                <div class="info-row">
+                                    <span>Développeur:</span>
+                                    <strong>IzatColis</strong>
+                                </div>
+                                <div class="info-row">
+                                    <span>Electron:</span>
+                                    <strong id="electronVersion">-</strong>
+                                </div>
+                                <div class="info-row">
+                                    <span>Node.js:</span>
+                                    <strong id="nodeVersion">-</strong>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>

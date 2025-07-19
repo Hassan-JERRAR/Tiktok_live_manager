@@ -22,6 +22,10 @@ Thumbs.db
 *.swp
 *.swo
 
+.env
+
+CLAUDE.md
+
 # Logs
 *.log
 

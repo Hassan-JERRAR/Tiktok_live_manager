@@ -1,6 +1,21 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
+
+// Import du gestionnaire de mise à jour
+let UpdateManager;
+try {
+    // Charger les variables d'environnement si le fichier .env existe
+    const path = require("path");
+    const envPath = path.join(__dirname, ".env");
+    if (require("fs").existsSync(envPath)) {
+        require("dotenv").config({ path: envPath });
+    }
+    
+    UpdateManager = require("./src/modules/updater/update-manager");
+} catch (error) {
+    console.log("⚠️ UpdateManager non disponible:", error.message);
+}
 
 let mainWindow;
 let tiktokConnection;
@@ -83,6 +98,17 @@ function createWindow() {
     // Charger les données au démarrage
     loadVerifiedUsers();
     loadPrintData();
+
+    // Initialiser le gestionnaire de mise à jour
+    if (UpdateManager && !process.argv.includes("--dev")) {
+        const updateManager = UpdateManager.getInstance();
+        updateManager.setMainWindow(mainWindow);
+        
+        // Vérifier les mises à jour 5 secondes après le démarrage
+        setTimeout(() => {
+            updateManager.checkForUpdates();
+        }, 5000);
+    }
 
     console.log("Fenêtre créée et données chargées");
 }
@@ -481,6 +507,55 @@ ipcMain.handle("show-info-dialog", (event, { title, message }) => {
         message: message,
         buttons: ["OK"],
     });
+});
+
+// Gestionnaires IPC pour les mises à jour
+ipcMain.handle("check-for-updates", async (event, manual = false) => {
+    if (UpdateManager) {
+        try {
+            const updateManager = UpdateManager.getInstance();
+            return await updateManager.checkForUpdates(manual);
+        } catch (error) {
+            console.error("Erreur lors de la vérification des mises à jour:", error);
+            return { error: error.message };
+        }
+    }
+    return { error: "Gestionnaire de mise à jour non disponible" };
+});
+
+ipcMain.handle("download-update", () => {
+    if (UpdateManager) {
+        const updateManager = UpdateManager.getInstance();
+        updateManager.downloadUpdate();
+        return { success: true };
+    }
+    return { error: "Gestionnaire de mise à jour non disponible" };
+});
+
+ipcMain.handle("install-update", () => {
+    if (UpdateManager) {
+        const updateManager = UpdateManager.getInstance();
+        updateManager.quitAndInstall();
+        return { success: true };
+    }
+    return { error: "Gestionnaire de mise à jour non disponible" };
+});
+
+ipcMain.handle("get-update-status", () => {
+    if (UpdateManager) {
+        const updateManager = UpdateManager.getInstance();
+        return updateManager.getUpdateStatus();
+    }
+    return { error: "Gestionnaire de mise à jour non disponible" };
+});
+
+ipcMain.handle("set-auto-update", (event, enabled) => {
+    if (UpdateManager) {
+        const updateManager = UpdateManager.getInstance();
+        updateManager.enableAutoUpdate(enabled);
+        return { success: true };
+    }
+    return { error: "Gestionnaire de mise à jour non disponible" };
 });
 
 app.whenReady().then(() => {

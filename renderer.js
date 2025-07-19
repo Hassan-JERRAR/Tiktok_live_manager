@@ -555,4 +555,247 @@ function escapeHtml(text) {
 // Rendre les fonctions disponibles globalement
 window.removeVerifiedUser = removeVerifiedUser;
 
-console.log('Renderer configuré');
+// ============================================
+// GESTION DES MISES À JOUR
+// ============================================
+
+// Éléments DOM pour les mises à jour
+const updateElements = {
+  currentVersion: document.getElementById('currentVersion'),
+  updateStatus: document.getElementById('updateStatus'),
+  checkUpdatesBtn: document.getElementById('checkUpdatesBtn'),
+  downloadUpdateBtn: document.getElementById('downloadUpdateBtn'),
+  installUpdateBtn: document.getElementById('installUpdateBtn'),
+  updateProgress: document.getElementById('updateProgress'),
+  progressFill: document.getElementById('progressFill'),
+  progressText: document.getElementById('progressText'),
+  progressPercent: document.getElementById('progressPercent'),
+  autoUpdateToggle: document.getElementById('autoUpdateToggle'),
+  electronVersion: document.getElementById('electronVersion'),
+  nodeVersion: document.getElementById('nodeVersion')
+};
+
+// Initialiser les informations système
+async function initSystemInfo() {
+  try {
+    // Afficher la version actuelle
+    const packageInfo = require('./package.json');
+    if (updateElements.currentVersion) {
+      updateElements.currentVersion.textContent = packageInfo.version;
+    }
+
+    // Afficher les versions Electron et Node.js
+    if (updateElements.electronVersion) {
+      updateElements.electronVersion.textContent = process.versions.electron;
+    }
+    if (updateElements.nodeVersion) {
+      updateElements.nodeVersion.textContent = process.versions.node;
+    }
+
+    // Récupérer le statut des mises à jour
+    await checkUpdateStatus();
+  } catch (error) {
+    console.error('Erreur lors de l\'initialisation des infos système:', error);
+  }
+}
+
+// Vérifier le statut des mises à jour
+async function checkUpdateStatus() {
+  try {
+    const result = await ipcRenderer.invoke('get-update-status');
+    if (result.error) {
+      updateStatus('Mises à jour non disponibles', 'error');
+      return;
+    }
+
+    if (result.updateAvailable) {
+      updateStatus('Mise à jour disponible!', 'available');
+      showButton('downloadUpdateBtn');
+    } else if (result.updateDownloaded) {
+      updateStatus('Mise à jour prête à installer', 'ready');
+      showButton('installUpdateBtn');
+    } else {
+      updateStatus('Application à jour', 'success');
+    }
+  } catch (error) {
+    console.error('Erreur lors de la vérification du statut:', error);
+    updateStatus('Erreur lors de la vérification', 'error');
+  }
+}
+
+// Mettre à jour le statut d'affichage
+function updateStatus(message, type) {
+  if (!updateElements.updateStatus) return;
+  
+  updateElements.updateStatus.textContent = message;
+  updateElements.updateStatus.className = `update-status ${type}`;
+}
+
+// Afficher/masquer les boutons
+function showButton(buttonId) {
+  const button = updateElements[buttonId];
+  if (button) {
+    button.style.display = 'inline-flex';
+  }
+}
+
+function hideButton(buttonId) {
+  const button = updateElements[buttonId];
+  if (button) {
+    button.style.display = 'none';
+  }
+}
+
+function hideAllUpdateButtons() {
+  hideButton('downloadUpdateBtn');
+  hideButton('installUpdateBtn');
+}
+
+// Gestionnaires d'événements pour les mises à jour
+function initUpdateEventHandlers() {
+  // Bouton vérifier les mises à jour
+  if (updateElements.checkUpdatesBtn) {
+    updateElements.checkUpdatesBtn.addEventListener('click', async () => {
+      updateElements.checkUpdatesBtn.disabled = true;
+      updateElements.checkUpdatesBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Vérification...';
+      updateStatus('Vérification des mises à jour...', 'checking');
+      hideAllUpdateButtons();
+
+      try {
+        const result = await ipcRenderer.invoke('check-for-updates', true);
+        
+        if (result.error) {
+          updateStatus('Erreur: ' + result.error, 'error');
+          showNotification('Erreur lors de la vérification des mises à jour: ' + result.error, 'error');
+        } else if (result.updateInfo) {
+          updateStatus(`Mise à jour ${result.updateInfo.version} disponible!`, 'available');
+          showButton('downloadUpdateBtn');
+          showNotification(`Nouvelle version ${result.updateInfo.version} disponible!`, 'info');
+        } else {
+          updateStatus('Application à jour', 'success');
+          showNotification('Vous utilisez déjà la dernière version', 'success');
+        }
+      } catch (error) {
+        console.error('Erreur vérification:', error);
+        updateStatus('Erreur lors de la vérification', 'error');
+        showNotification('Erreur lors de la vérification des mises à jour', 'error');
+      } finally {
+        updateElements.checkUpdatesBtn.disabled = false;
+        updateElements.checkUpdatesBtn.innerHTML = '<i class="fas fa-sync"></i> Vérifier les mises à jour';
+      }
+    });
+  }
+
+  // Bouton télécharger la mise à jour
+  if (updateElements.downloadUpdateBtn) {
+    updateElements.downloadUpdateBtn.addEventListener('click', async () => {
+      updateElements.downloadUpdateBtn.disabled = true;
+      updateElements.downloadUpdateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Téléchargement...';
+      updateStatus('Téléchargement en cours...', 'downloading');
+      
+      if (updateElements.updateProgress) {
+        updateElements.updateProgress.style.display = 'block';
+      }
+
+      try {
+        const result = await ipcRenderer.invoke('download-update');
+        if (result.error) {
+          updateStatus('Erreur: ' + result.error, 'error');
+          showNotification('Erreur lors du téléchargement: ' + result.error, 'error');
+        }
+      } catch (error) {
+        console.error('Erreur téléchargement:', error);
+        updateStatus('Erreur lors du téléchargement', 'error');
+        showNotification('Erreur lors du téléchargement de la mise à jour', 'error');
+      } finally {
+        updateElements.downloadUpdateBtn.disabled = false;
+        updateElements.downloadUpdateBtn.innerHTML = '<i class="fas fa-download"></i> Télécharger la mise à jour';
+      }
+    });
+  }
+
+  // Bouton installer la mise à jour
+  if (updateElements.installUpdateBtn) {
+    updateElements.installUpdateBtn.addEventListener('click', async () => {
+      const confirmInstall = await window.confirm(
+        'L\'application va redémarrer pour installer la mise à jour. Continuer?'
+      );
+      
+      if (confirmInstall) {
+        updateElements.installUpdateBtn.disabled = true;
+        updateElements.installUpdateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Installation...';
+        updateStatus('Installation en cours...', 'ready');
+
+        try {
+          await ipcRenderer.invoke('install-update');
+        } catch (error) {
+          console.error('Erreur installation:', error);
+          updateStatus('Erreur lors de l\'installation', 'error');
+          showNotification('Erreur lors de l\'installation de la mise à jour', 'error');
+          updateElements.installUpdateBtn.disabled = false;
+          updateElements.installUpdateBtn.innerHTML = '<i class="fas fa-power-off"></i> Installer et redémarrer';
+        }
+      }
+    });
+  }
+
+  // Toggle mise à jour automatique
+  if (updateElements.autoUpdateToggle) {
+    updateElements.autoUpdateToggle.addEventListener('change', async (e) => {
+      try {
+        const result = await ipcRenderer.invoke('set-auto-update', e.target.checked);
+        if (result.error) {
+          showNotification('Erreur: ' + result.error, 'error');
+          e.target.checked = !e.target.checked; // Revenir à l'état précédent
+        } else {
+          const status = e.target.checked ? 'activées' : 'désactivées';
+          showNotification(`Mises à jour automatiques ${status}`, 'success');
+        }
+      } catch (error) {
+        console.error('Erreur toggle auto-update:', error);
+        showNotification('Erreur lors de la configuration des mises à jour automatiques', 'error');
+        e.target.checked = !e.target.checked; // Revenir à l'état précédent
+      }
+    });
+  }
+}
+
+// Écouter les événements de l'UpdateManager
+function listenForUpdateEvents() {
+  // Note: Ces événements seraient émis par l'UpdateManager via le main process
+  // Pour l'instant, nous gérons cela via les appels IPC directs
+  
+  // Exemple d'événements qu'on pourrait écouter:
+  // ipcRenderer.on('update-available', (event, info) => { ... });
+  // ipcRenderer.on('download-progress', (event, progress) => { ... });
+  // ipcRenderer.on('update-downloaded', (event, info) => { ... });
+}
+
+// Mettre à jour la barre de progression
+function updateDownloadProgress(percent, transferred, total) {
+  if (updateElements.progressFill) {
+    updateElements.progressFill.style.width = percent + '%';
+  }
+  
+  if (updateElements.progressPercent) {
+    updateElements.progressPercent.textContent = percent.toFixed(1) + '%';
+  }
+  
+  if (updateElements.progressText) {
+    const transferredMB = (transferred / 1024 / 1024).toFixed(1);
+    const totalMB = (total / 1024 / 1024).toFixed(1);
+    updateElements.progressText.textContent = `Téléchargement: ${transferredMB}MB / ${totalMB}MB`;
+  }
+}
+
+// Initialiser les mises à jour au chargement de la page
+document.addEventListener('DOMContentLoaded', () => {
+  // Attendre un peu pour s'assurer que tous les éléments sont chargés
+  setTimeout(() => {
+    initSystemInfo();
+    initUpdateEventHandlers();
+    listenForUpdateEvents();
+  }, 1000);
+});
+
+console.log('Renderer configuré avec gestion des mises à jour');
