@@ -1,0 +1,78 @@
+{
+  "name": "tiktok-live-app",
+  "version": "1.0.1",
+  "description": "Application desktop pour gérer TikTok Live et l'impression d'étiquettes",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "build-win": "electron-builder --win",
+    "build-mac": "electron-builder --mac",
+    "build-linux": "electron-builder --linux",
+    "build-publish": "electron-builder --publish=always",
+    "build-publish-win": "electron-builder --win --publish=always",
+    "build-publish-mac": "electron-builder --mac --publish=always",
+    "build-publish-linux": "electron-builder --linux --publish=always"
+  },
+  "keywords": [
+    "tiktok",
+    "live",
+    "etiquettes",
+    "impression",
+    "electron"
+  ],
+  "author": "IzatColis",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "dependencies": {
+    "@node-escpos/core": "^0.6.0",
+    "@node-escpos/usb-adapter": "^0.3.1",
+    "bufferutil": "^4.0.9",
+    "dotenv": "^17.2.0",
+    "electron-updater": "^6.6.2",
+    "tiktok-live-connector": "^2.0.5-beta1",
+    "utf-8-validate": "^6.0.5",
+    "websocket": "^1.0.35",
+    "ws": "^8.18.3"
+  },
+  "build": {
+    "appId": "com.izatcolis.tiktok-live-app",
+    "productName": "TikTok Live Manager",
+    "asar": false,
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.icns",
+      "category": "public.app-category.business",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "Hassan-JERRAR",
+      "repo": "Tiktok_live_manager",
+      "private": true
+    }
+  }
+}
