@@ -104,6 +104,19 @@ function createWindow() {
         const updateManager = UpdateManager.getInstance();
         updateManager.setMainWindow(mainWindow);
         
+        // Écouter les événements de mise à jour et les transmettre au renderer
+        updateManager.on('update-download-progress', (progress) => {
+            mainWindow.webContents.send('update-download-progress', progress);
+        });
+        
+        updateManager.on('update-downloaded', (info) => {
+            mainWindow.webContents.send('update-downloaded', info);
+        });
+        
+        updateManager.on('download-started', () => {
+            mainWindow.webContents.send('update-download-started');
+        });
+        
         // Vérifier les mises à jour 5 secondes après le démarrage
         setTimeout(() => {
             updateManager.checkForUpdates();
@@ -523,11 +536,16 @@ ipcMain.handle("check-for-updates", async (event, manual = false) => {
     return { error: "Gestionnaire de mise à jour non disponible" };
 });
 
-ipcMain.handle("download-update", () => {
+ipcMain.handle("download-update", async () => {
     if (UpdateManager) {
-        const updateManager = UpdateManager.getInstance();
-        updateManager.downloadUpdate();
-        return { success: true };
+        try {
+            const updateManager = UpdateManager.getInstance();
+            const result = await updateManager.downloadUpdate();
+            return result;
+        } catch (error) {
+            console.error("Erreur lors du téléchargement:", error);
+            return { error: error.message };
+        }
     }
     return { error: "Gestionnaire de mise à jour non disponible" };
 });

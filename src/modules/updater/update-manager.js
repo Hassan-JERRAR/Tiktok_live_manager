@@ -64,9 +64,14 @@ class UpdateManager extends EventEmitter {
             logger.info(`Mise à jour détectée - Actuelle: ${currentVersion}, Disponible: ${info.version}`);
             
             // Vérifier si c'est vraiment une nouvelle version
-            if (this.compareVersions(currentVersion, info.version) >= 0) {
+            const comparison = this.compareVersions(currentVersion, info.version);
+            if (comparison >= 0) {
                 logger.info("La version disponible n'est pas plus récente que la version actuelle");
-                this.emit("update-not-available", { version: currentVersion });
+                this.emit("update-not-available", { 
+                    version: currentVersion,
+                    availableVersion: info.version,
+                    isUpToDate: comparison === 0
+                });
                 return;
             }
             
@@ -128,13 +133,43 @@ class UpdateManager extends EventEmitter {
             const currentVersion = require("../../../package.json").version;
             logger.info(`Version actuelle: ${currentVersion}`);
 
-            const result = await autoUpdater.checkForUpdatesAndNotify();
+            return new Promise((resolve) => {
+                // Définir les listeners une seule fois pour cette vérification
+                const onUpdateAvailable = (info) => {
+                    cleanup();
+                    resolve({ updateInfo: info });
+                };
 
-            if (manual && !result) {
-                this.showNoUpdateDialog();
-            }
+                const onUpdateNotAvailable = (info) => {
+                    cleanup();
+                    if (manual) {
+                        this.showNoUpdateDialog(info);
+                    }
+                    resolve({ noUpdate: true, currentVersion, info });
+                };
 
-            return result;
+                const onError = (error) => {
+                    cleanup();
+                    if (manual) {
+                        this.showUpdateErrorDialog(error);
+                    }
+                    resolve({ error: error.message });
+                };
+
+                const cleanup = () => {
+                    this.off('update-available', onUpdateAvailable);
+                    this.off('update-not-available', onUpdateNotAvailable);
+                    this.off('update-error', onError);
+                };
+
+                // Ajouter les listeners temporaires
+                this.once('update-available', onUpdateAvailable);
+                this.once('update-not-available', onUpdateNotAvailable);
+                this.once('update-error', onError);
+
+                // Lancer la vérification
+                autoUpdater.checkForUpdates().catch(onError);
+            });
         } catch (error) {
             logger.error(
                 "Erreur lors de la vérification des mises à jour:",
@@ -143,12 +178,19 @@ class UpdateManager extends EventEmitter {
             if (manual) {
                 this.showUpdateErrorDialog(error);
             }
-            throw error;
+            return { error: error.message };
         }
     }
 
     downloadUpdate() {
-        if (this.updateAvailable) {
+        return new Promise((resolve, reject) => {
+            if (!this.updateAvailable) {
+                const error = "Aucune mise à jour disponible pour le téléchargement";
+                logger.warn(error);
+                reject(new Error(error));
+                return;
+            }
+
             logger.info("Début du téléchargement de la mise à jour");
             this.emit("download-started");
             
@@ -156,11 +198,35 @@ class UpdateManager extends EventEmitter {
             if (this.mainWindow) {
                 this.mainWindow.webContents.send('update-download-started');
             }
+
+            // Listeners pour cette opération de téléchargement
+            const onDownloaded = (info) => {
+                cleanup();
+                resolve({ success: true, info });
+            };
+
+            const onError = (error) => {
+                cleanup();
+                reject(error);
+            };
+
+            const cleanup = () => {
+                this.off('update-downloaded', onDownloaded);
+                this.off('update-error', onError);
+            };
+
+            // Ajouter les listeners temporaires
+            this.once('update-downloaded', onDownloaded);
+            this.once('update-error', onError);
             
-            autoUpdater.downloadUpdate();
-        } else {
-            logger.warn("Tentative de téléchargement sans mise à jour disponible");
-        }
+            // Lancer le téléchargement
+            try {
+                autoUpdater.downloadUpdate();
+            } catch (error) {
+                cleanup();
+                reject(error);
+            }
+        });
     }
 
     quitAndInstall() {
@@ -236,13 +302,22 @@ class UpdateManager extends EventEmitter {
         });
     }
 
-    showNoUpdateDialog() {
+    showNoUpdateDialog(updateInfo = null) {
         if (!this.mainWindow) return;
+
+        const currentVersion = require("../../../package.json").version;
+        let message = "Vous utilisez déjà la dernière version.";
+        
+        if (updateInfo && updateInfo.isUpToDate) {
+            message = `Version à jour (${currentVersion})`;
+        } else if (updateInfo && updateInfo.availableVersion) {
+            message = `Votre version (${currentVersion}) est plus récente que celle disponible (${updateInfo.availableVersion})`;
+        }
 
         dialog.showMessageBox(this.mainWindow, {
             type: "info",
-            title: "Pas de mise à jour",
-            message: "Vous utilisez déjà la dernière version.",
+            title: "Version à jour",
+            message: message,
             buttons: ["OK"],
         });
     }

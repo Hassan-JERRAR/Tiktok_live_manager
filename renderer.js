@@ -671,6 +671,14 @@ function initUpdateEventHandlers() {
           updateStatus(`Mise à jour ${result.updateInfo.version} disponible!`, 'available');
           showButton('downloadUpdateBtn');
           showNotification(`Nouvelle version ${result.updateInfo.version} disponible!`, 'info');
+        } else if (result.noUpdate) {
+          if (result.info && result.info.isUpToDate) {
+            updateStatus(`Version à jour (${result.currentVersion})`, 'success');
+            showNotification(`Version à jour (${result.currentVersion})`, 'success');
+          } else {
+            updateStatus('Application à jour', 'success');
+            showNotification('Vous utilisez déjà la dernière version', 'success');
+          }
         } else {
           updateStatus('Application à jour', 'success');
           showNotification('Vous utilisez déjà la dernière version', 'success');
@@ -762,13 +770,31 @@ function initUpdateEventHandlers() {
 
 // Écouter les événements de l'UpdateManager
 function listenForUpdateEvents() {
-  // Note: Ces événements seraient émis par l'UpdateManager via le main process
-  // Pour l'instant, nous gérons cela via les appels IPC directs
+  // Écouter le progrès de téléchargement
+  ipcRenderer.on('update-download-progress', (event, progress) => {
+    updateDownloadProgress(progress.percent, progress.transferred, progress.total);
+  });
   
-  // Exemple d'événements qu'on pourrait écouter:
-  // ipcRenderer.on('update-available', (event, info) => { ... });
-  // ipcRenderer.on('download-progress', (event, progress) => { ... });
-  // ipcRenderer.on('update-downloaded', (event, info) => { ... });
+  // Écouter quand le téléchargement commence
+  ipcRenderer.on('update-download-started', () => {
+    updateStatus('Téléchargement en cours...', 'downloading');
+    if (updateElements.updateProgress) {
+      updateElements.updateProgress.style.display = 'block';
+    }
+  });
+  
+  // Écouter quand le téléchargement est terminé
+  ipcRenderer.on('update-downloaded', (event, info) => {
+    updateStatus('Mise à jour téléchargée', 'ready');
+    hideButton('downloadUpdateBtn');
+    showButton('installUpdateBtn');
+    showNotification(`Mise à jour ${info.version} téléchargée et prête à installer!`, 'success');
+    
+    // Cacher la barre de progression
+    if (updateElements.updateProgress) {
+      updateElements.updateProgress.style.display = 'none';
+    }
+  });
 }
 
 // Mettre à jour la barre de progression
