@@ -3,6 +3,10 @@ const { dialog, shell } = require("electron");
 const EventEmitter = require("events");
 const logger = require("../../utils/logger");
 const config = require("../../config/app-config");
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { app } = require('electron');
 
 class UpdateManager extends EventEmitter {
     constructor() {
@@ -26,31 +30,15 @@ class UpdateManager extends EventEmitter {
 
     setupAutoUpdater() {
         // Configuration du serveur de mise à jour pour repository privé
-        const updateConfig = {
-            provider: "github",
-            owner: "Hassan-JERRAR",
-            repo: "Tiktok_live_manager",
-            private: true,
-            allowPrerelease: true, // Permet les releases draft/pre-release
-        };
-
-        // Ajouter le token si disponible
-        if (process.env.GH_TOKEN) {
-            updateConfig.token = process.env.GH_TOKEN;
+        if (!process.env.GH_TOKEN) {
+            logger.error("GH_TOKEN manquant pour l'auto-updater");
+            return;
         }
 
-        // Configuration spéciale pour les repositories privés
-        autoUpdater.setFeedURL(updateConfig);
-
-        // Configuration des headers d'authentification pour les assets
-        if (process.env.GH_TOKEN) {
-            autoUpdater.requestHeaders = {
-                Authorization: `token ${process.env.GH_TOKEN}`,
-                "User-Agent": "TikTok-Live-Manager-Updater",
-            };
-        }
-
-        // Configuration des logs
+        // Désactiver complètement autoUpdater et utiliser notre implémentation custom
+        this.useCustomUpdater = true;
+        
+        // Configuration des logs pour le debug
         autoUpdater.logger = logger;
 
         // Événements d'auto-updater
@@ -129,12 +117,16 @@ class UpdateManager extends EventEmitter {
                 logger.info("Vérification manuelle des mises à jour");
             }
 
-            // Vérifier d'abord manuellement les versions pour éviter les faux positifs
+            // Utiliser notre implémentation personnalisée pour les repos privés
+            if (this.useCustomUpdater) {
+                return await this.checkForUpdatesCustom(manual);
+            }
+
+            // Fallback vers l'auto-updater standard (pour repos publics)
             const currentVersion = require("../../../package.json").version;
             logger.info(`Version actuelle: ${currentVersion}`);
 
             return new Promise((resolve) => {
-                // Définir les listeners une seule fois pour cette vérification
                 const onUpdateAvailable = (info) => {
                     cleanup();
                     resolve({ updateInfo: info });
@@ -162,24 +154,127 @@ class UpdateManager extends EventEmitter {
                     this.off('update-error', onError);
                 };
 
-                // Ajouter les listeners temporaires
                 this.once('update-available', onUpdateAvailable);
                 this.once('update-not-available', onUpdateNotAvailable);
                 this.once('update-error', onError);
 
-                // Lancer la vérification
                 autoUpdater.checkForUpdates().catch(onError);
             });
         } catch (error) {
-            logger.error(
-                "Erreur lors de la vérification des mises à jour:",
-                error
-            );
+            logger.error("Erreur lors de la vérification des mises à jour:", error);
             if (manual) {
                 this.showUpdateErrorDialog(error);
             }
             return { error: error.message };
         }
+    }
+
+    // Implémentation personnalisée pour repos privés GitHub
+    async checkForUpdatesCustom(manual = false) {
+        const currentVersion = require("../../../package.json").version;
+        logger.info(`Version actuelle: ${currentVersion}`);
+
+        try {
+            // Récupérer la dernière release via l'API GitHub
+            const releaseInfo = await this.getLatestReleaseFromGitHub();
+            
+            if (!releaseInfo) {
+                const info = { currentVersion };
+                if (manual) {
+                    this.showNoUpdateDialog(info);
+                }
+                return { noUpdate: true, currentVersion, info };
+            }
+
+            // Comparer les versions
+            const comparison = this.compareVersions(currentVersion, releaseInfo.tag_name.replace('v', ''));
+            
+            if (comparison >= 0) {
+                logger.info("Aucune mise à jour disponible");
+                const info = { 
+                    currentVersion,
+                    availableVersion: releaseInfo.tag_name.replace('v', ''),
+                    isUpToDate: comparison === 0
+                };
+                
+                if (manual) {
+                    this.showNoUpdateDialog(info);
+                }
+                return { noUpdate: true, currentVersion, info };
+            }
+
+            // Mise à jour disponible
+            logger.info(`Mise à jour disponible: ${releaseInfo.tag_name}`);
+            this.updateAvailable = true;
+            this.latestRelease = releaseInfo;
+            
+            const updateInfo = {
+                version: releaseInfo.tag_name.replace('v', ''),
+                releaseNotes: releaseInfo.body,
+                releaseDate: releaseInfo.published_at,
+                releaseName: releaseInfo.name
+            };
+
+            this.emit("update-available", updateInfo);
+            if (manual) {
+                this.showUpdateAvailableDialog(updateInfo);
+            }
+            
+            return { updateInfo };
+
+        } catch (error) {
+            logger.error("Erreur lors de la vérification des mises à jour:", error);
+            if (manual) {
+                this.showUpdateErrorDialog(error);
+            }
+            return { error: error.message };
+        }
+    }
+
+    // Récupérer la dernière release depuis l'API GitHub
+    async getLatestReleaseFromGitHub() {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.github.com',
+                path: '/repos/Hassan-JERRAR/Tiktok_live_manager/releases/latest',
+                method: 'GET',
+                headers: {
+                    'Authorization': `token ${process.env.GH_TOKEN}`,
+                    'User-Agent': 'TikTok-Live-Manager-Updater',
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            };
+
+            const req = https.request(options, (res) => {
+                let data = '';
+
+                res.on('data', (chunk) => {
+                    data += chunk;
+                });
+
+                res.on('end', () => {
+                    try {
+                        if (res.statusCode === 200) {
+                            const release = JSON.parse(data);
+                            resolve(release);
+                        } else if (res.statusCode === 404) {
+                            logger.info("Aucune release trouvée");
+                            resolve(null);
+                        } else {
+                            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
+                });
+            });
+
+            req.on('error', (error) => {
+                reject(error);
+            });
+
+            req.end();
+        });
     }
 
     downloadUpdate() {
@@ -191,15 +286,20 @@ class UpdateManager extends EventEmitter {
                 return;
             }
 
+            // Utiliser notre implémentation personnalisée pour les repos privés
+            if (this.useCustomUpdater) {
+                this.downloadUpdateCustom().then(resolve).catch(reject);
+                return;
+            }
+
+            // Fallback vers l'auto-updater standard
             logger.info("Début du téléchargement de la mise à jour");
             this.emit("download-started");
             
-            // Afficher une notification de début de téléchargement
             if (this.mainWindow) {
                 this.mainWindow.webContents.send('update-download-started');
             }
 
-            // Listeners pour cette opération de téléchargement
             const onDownloaded = (info) => {
                 cleanup();
                 resolve({ success: true, info });
@@ -215,17 +315,178 @@ class UpdateManager extends EventEmitter {
                 this.off('update-error', onError);
             };
 
-            // Ajouter les listeners temporaires
             this.once('update-downloaded', onDownloaded);
             this.once('update-error', onError);
             
-            // Lancer le téléchargement
             try {
                 autoUpdater.downloadUpdate();
             } catch (error) {
                 cleanup();
                 reject(error);
             }
+        });
+    }
+
+    // Téléchargement personnalisé pour repos privés
+    async downloadUpdateCustom() {
+        if (!this.latestRelease) {
+            throw new Error("Aucune information de release disponible");
+        }
+
+        logger.info("Début du téléchargement personnalisé de la mise à jour");
+        this.emit("download-started");
+        
+        if (this.mainWindow) {
+            this.mainWindow.webContents.send('update-download-started');
+        }
+
+        try {
+            // Trouver l'asset approprié pour la plateforme actuelle
+            const platform = process.platform;
+            let assetName = '';
+            
+            if (platform === 'darwin') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.dmg')
+                )?.name;
+            } else if (platform === 'win32') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.exe')
+                )?.name;
+            } else if (platform === 'linux') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.AppImage')
+                )?.name;
+            }
+
+            if (!assetName) {
+                throw new Error(`Aucun asset trouvé pour la plateforme ${platform}`);
+            }
+
+            const asset = this.latestRelease.assets.find(a => a.name === assetName);
+            const downloadPath = path.join(app.getPath('temp'), assetName);
+
+            // Télécharger l'asset avec authentification
+            await this.downloadAsset(asset, downloadPath);
+            
+            logger.info("Mise à jour téléchargée avec succès");
+            this.updateDownloaded = true;
+            
+            const updateInfo = {
+                version: this.latestRelease.tag_name.replace('v', ''),
+                downloadPath: downloadPath,
+                assetName: assetName
+            };
+
+            this.emit("update-downloaded", updateInfo);
+            
+            if (this.mainWindow) {
+                this.mainWindow.webContents.send('update-downloaded', updateInfo);
+            }
+            
+            this.showUpdateDownloadedDialog(updateInfo);
+            
+            return { success: true, info: updateInfo };
+
+        } catch (error) {
+            logger.error("Erreur lors du téléchargement:", error);
+            this.emit("update-error", error);
+            throw error;
+        }
+    }
+
+    // Télécharger un asset GitHub avec authentification
+    async downloadAsset(asset, downloadPath) {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'api.github.com',
+                path: `/repos/Hassan-JERRAR/Tiktok_live_manager/releases/assets/${asset.id}`,
+                method: 'GET',
+                headers: {
+                    'Authorization': `token ${process.env.GH_TOKEN}`,
+                    'User-Agent': 'TikTok-Live-Manager-Updater',
+                    'Accept': 'application/octet-stream'
+                }
+            };
+
+            const file = fs.createWriteStream(downloadPath);
+            let downloadedBytes = 0;
+            const totalBytes = asset.size;
+
+            const req = https.request(options, (res) => {
+                if (res.statusCode === 302 || res.statusCode === 301) {
+                    // Redirection vers l'URL de téléchargement
+                    const redirectUrl = res.headers.location;
+                    logger.info("Redirection vers:", redirectUrl);
+                    
+                    // Suivre la redirection avec authentification
+                    const redirectReq = https.get(redirectUrl, {
+                        headers: {
+                            'Authorization': `token ${process.env.GH_TOKEN}`,
+                            'User-Agent': 'TikTok-Live-Manager-Updater'
+                        }
+                    }, (redirectRes) => {
+                        this.handleDownloadResponse(redirectRes, file, downloadedBytes, totalBytes, resolve, reject);
+                    });
+                    
+                    redirectReq.on('error', reject);
+                    return;
+                }
+
+                this.handleDownloadResponse(res, file, downloadedBytes, totalBytes, resolve, reject);
+            });
+
+            req.on('error', (error) => {
+                fs.unlink(downloadPath, () => {});
+                reject(error);
+            });
+
+            req.end();
+        });
+    }
+
+    // Gérer la réponse de téléchargement avec progress
+    handleDownloadResponse(res, file, downloadedBytes, totalBytes, resolve, reject) {
+        if (res.statusCode !== 200) {
+            file.close();
+            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+            return;
+        }
+
+        res.on('data', (chunk) => {
+            downloadedBytes += chunk.length;
+            const percent = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
+            
+            this.emit("download-progress", {
+                percent: percent,
+                transferred: downloadedBytes,
+                total: totalBytes
+            });
+            
+            if (this.mainWindow) {
+                this.mainWindow.webContents.send('update-download-progress', {
+                    percent: percent,
+                    transferred: downloadedBytes,
+                    total: totalBytes
+                });
+            }
+        });
+
+        res.pipe(file);
+
+        file.on('finish', () => {
+            file.close();
+            resolve();
+        });
+
+        file.on('error', (error) => {
+            fs.unlink(file.path, () => {});
+            reject(error);
+        });
+
+        res.on('error', (error) => {
+            file.close();
+            reject(error);
         });
     }
 

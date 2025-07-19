@@ -164,7 +164,7 @@ EventEmitter → NotificationManager → UI Renderer
 ## OTA Update System
 
 ### Configuration Requirements
-- GitHub token in `.env` file: `GITHUB_TOKEN=your_token_here`
+- GitHub token in `.env` file: `GH_TOKEN=your_token_here`
 - Private repository: Hassan-JERRAR/Tiktok_live_manager
 - Auto-updater checks every 24 hours by default
 
