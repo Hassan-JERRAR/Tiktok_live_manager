@@ -493,7 +493,84 @@ class UpdateManager extends EventEmitter {
     quitAndInstall() {
         if (this.updateDownloaded) {
             logger.info("Installation de la mise à jour et redémarrage");
-            autoUpdater.quitAndInstall();
+            
+            // Utiliser notre implémentation personnalisée pour les repos privés
+            if (this.useCustomUpdater && this.latestRelease) {
+                this.installUpdateCustom();
+            } else {
+                autoUpdater.quitAndInstall();
+            }
+        }
+    }
+
+    // Installation personnalisée pour repos privés
+    installUpdateCustom() {
+        try {
+            // Trouver l'asset approprié pour la plateforme actuelle
+            const platform = process.platform;
+            let assetName = '';
+            
+            if (platform === 'darwin') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.dmg')
+                )?.name;
+            } else if (platform === 'win32') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.exe')
+                )?.name;
+            } else if (platform === 'linux') {
+                assetName = this.latestRelease.assets.find(asset => 
+                    asset.name.endsWith('.AppImage')
+                )?.name;
+            }
+
+            if (!assetName) {
+                throw new Error(`Aucun asset trouvé pour la plateforme ${platform}`);
+            }
+
+            const downloadPath = path.join(app.getPath('temp'), assetName);
+            
+            // Vérifier que le fichier existe
+            if (!fs.existsSync(downloadPath)) {
+                throw new Error("Fichier de mise à jour introuvable");
+            }
+
+            logger.info(`Ouverture du fichier de mise à jour: ${downloadPath}`);
+
+            if (platform === 'darwin') {
+                // Sur macOS, ouvrir le DMG
+                const { spawn } = require('child_process');
+                spawn('open', [downloadPath], { detached: true });
+                
+                // Fermer l'application après un délai pour permettre l'ouverture du DMG
+                setTimeout(() => {
+                    app.quit();
+                }, 2000);
+                
+            } else if (platform === 'win32') {
+                // Sur Windows, lancer l'installateur
+                const { spawn } = require('child_process');
+                spawn(downloadPath, [], { detached: true });
+                app.quit();
+                
+            } else if (platform === 'linux') {
+                // Sur Linux, rendre le fichier exécutable et l'ouvrir
+                const { spawn } = require('child_process');
+                fs.chmodSync(downloadPath, '755');
+                spawn(downloadPath, [], { detached: true });
+                app.quit();
+            }
+
+        } catch (error) {
+            logger.error("Erreur lors de l'installation:", error);
+            
+            // Afficher une boîte de dialogue d'erreur
+            if (this.mainWindow) {
+                dialog.showErrorBox(
+                    "Erreur d'installation",
+                    `Impossible d'installer automatiquement la mise à jour: ${error.message}\n\nVeuillez installer manuellement le fichier téléchargé.`
+                );
+            }
         }
     }
 
