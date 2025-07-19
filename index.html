@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="fr">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>TikTok Live Manager - IzatColis</title>
+        <link rel="stylesheet" href="styles.css" />
+        <link
+            href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+            rel="stylesheet"
+        />
+    </head>
+    <body>
+        <div class="app-container">
+            <!-- Header -->
+            <header class="header">
+                <div class="header-content">
+                    <div class="logo">
+                        <i class="fab fa-tiktok"></i>
+                        <h1>TikTok Live Manager</h1>
+                    </div>
+                    <div class="connection-status">
+                        <div class="status-indicator" id="connectionStatus">
+                            <div class="status-dot" id="statusDot"></div>
+                            <span id="statusText">Déconnecté</span>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Navigation -->
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="dashboard">
+                    <i class="fas fa-chart-line"></i>
+                    Dashboard
+                </button>
+                <button class="nav-tab" data-tab="messages">
+                    <i class="fas fa-comments"></i>
+                    Messages Live
+                </button>
+                <button class="nav-tab" data-tab="users">
+                    <i class="fas fa-users"></i>
+                    Utilisateurs Vérifiés
+                </button>
+                <button class="nav-tab" data-tab="print">
+                    <i class="fas fa-print"></i>
+                    Impression
+                </button>
+                <button class="nav-tab" data-tab="history">
+                    <i class="fas fa-history"></i>
+                    Historique
+                </button>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Dashboard Tab -->
+                <div class="tab-content active" id="dashboard">
+                    <div class="dashboard-grid">
+                        <!-- Statistiques -->
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-comments"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <h3 id="messageCount">0</h3>
+                                    <p>Messages</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-star"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <h3 id="verifiedCount">0</h3>
+                                    <p>Utilisateurs Vérifiés</p>
+                                </div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-icon">
+                                    <i class="fas fa-tags"></i>
+                                </div>
+                                <div class="stat-info">
+                                    <h3 id="printCount">0</h3>
+                                    <p>Étiquettes Imprimées</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Contrôles de connexion -->
+                        <div class="control-panel">
+                            <h2>Connexion TikTok Live</h2>
+                            <div class="connection-controls">
+                                <button id="connectBtn" class="btn btn-primary">
+                                    <i class="fas fa-play"></i>
+                                    Se connecter
+                                </button>
+                                <button
+                                    id="disconnectBtn"
+                                    class="btn btn-secondary"
+                                    disabled
+                                >
+                                    <i class="fas fa-stop"></i>
+                                    Se déconnecter
+                                </button>
+                            </div>
+                            <div class="connection-info" id="connectionInfo">
+                                <p>
+                                    Nom d'utilisateur:
+                                    <strong>izatcolis</strong>
+                                </p>
+                                <p id="roomInfo" style="display: none">
+                                    Room ID: <span id="roomId"></span>
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Messages récents -->
+                        <div class="recent-messages">
+                            <h2>Messages Récents</h2>
+                            <div class="messages-preview" id="messagesPreview">
+                                <p class="no-messages">
+                                    Connectez-vous pour voir les messages
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Messages Tab -->
+                <div class="tab-content" id="messages">
+                    <div class="messages-container">
+                        <div class="messages-header">
+                            <h2>Messages TikTok Live</h2>
+                            <button
+                                id="clearMessages"
+                                class="btn btn-secondary"
+                            >
+                                <i class="fas fa-trash"></i>
+                                Effacer
+                            </button>
+                        </div>
+                        <div class="messages-list" id="messagesList">
+                            <p class="no-messages">
+                                Connectez-vous pour voir les messages en temps
+                                réel
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Users Tab -->
+                <div class="tab-content" id="users">
+                    <div class="users-container">
+                        <div class="add-user-section">
+                            <h2>Ajouter un Utilisateur Vérifié</h2>
+                            <form id="addUserForm" class="add-user-form">
+                                <div class="form-group">
+                                    <input
+                                        type="text"
+                                        id="newUserInput"
+                                        placeholder="Nom d'utilisateur TikTok"
+                                        required
+                                    />
+                                    <button
+                                        type="submit"
+                                        class="btn btn-primary"
+                                    >
+                                        <i class="fas fa-plus"></i>
+                                        Ajouter
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <div class="users-list-section">
+                            <h2>Utilisateurs Vérifiés</h2>
+                            <div class="users-list" id="usersList">
+                                <p class="no-users">
+                                    Aucun utilisateur vérifié
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Print Tab -->
+                <div class="tab-content" id="print">
+                    <div class="print-container">
+                        <h2>Imprimer une Étiquette</h2>
+                        <form id="printForm" class="print-form">
+                            <div class="form-grid">
+                                <div class="form-group">
+                                    <label for="printPseudo">Pseudo</label>
+                                    <input
+                                        type="text"
+                                        id="printPseudo"
+                                        placeholder="Nom d'utilisateur"
+                                        required
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label for="printMontant"
+                                        >Montant (€)</label
+                                    >
+                                    <input
+                                        type="number"
+                                        id="printMontant"
+                                        placeholder="25.50"
+                                        step="0.01"
+                                        required
+                                    />
+                                </div>
+                                <div class="form-group">
+                                    <label for="printDescription"
+                                        >Description</label
+                                    >
+                                    <input
+                                        type="text"
+                                        id="printDescription"
+                                        placeholder="Commande vêtements"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                class="btn btn-primary btn-large"
+                            >
+                                <i class="fas fa-print"></i>
+                                Imprimer l'Étiquette
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- History Tab -->
+                <div class="tab-content" id="history">
+                    <div class="history-container">
+                        <div class="history-header">
+                            <h2>Historique des Impressions</h2>
+                            <div class="history-stats">
+                                <span id="historyCount">0 impression(s)</span>
+                            </div>
+                        </div>
+                        <div class="history-list" id="historyList">
+                            <p class="no-history">
+                                Aucune impression dans l'historique
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+
+        <!-- Notifications -->
+        <div class="notification-container" id="notifications"></div>
+
+        <script src="renderer.js"></script>
+    </body>
+</html>
