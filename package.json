@@ -1,6 +1,6 @@
 {
   "name": "tiktok-live-app",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "Application desktop pour gérer TikTok Live et l'impression d'étiquettes",
   "main": "main.js",
   "scripts": {
@@ -56,11 +56,17 @@
       "icon": "assets/icon.ico"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        }
+      ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.business",
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "10.14.0"
     },
     "linux": {
       "target": "AppImage",
