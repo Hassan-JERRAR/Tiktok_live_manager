@@ -30,6 +30,23 @@ class UpdateManager extends EventEmitter {
         autoUpdater.autoDownload = updateConfig.options.autoDownload;
         autoUpdater.autoInstallOnAppQuit = updateConfig.options.autoInstallOnAppQuit;
         
+        // Forcer l'architecture correcte sur macOS
+        if (process.platform === 'darwin') {
+            const arch = process.arch;
+            logger.info(`Architecture détectée: ${arch}`);
+            
+            // Configurer l'URL de mise à jour avec l'architecture
+            if (updateConfig.github) {
+                const feedURL = `https://github.com/${updateConfig.github.owner}/${updateConfig.github.repo}`;
+                autoUpdater.setFeedURL({
+                    provider: 'github',
+                    owner: updateConfig.github.owner,
+                    repo: updateConfig.github.repo,
+                    private: updateConfig.github.private || false
+                });
+            }
+        }
+        
         // Configuration des logs pour le debug
         autoUpdater.logger = logger;
 
