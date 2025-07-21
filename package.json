@@ -47,7 +47,9 @@
       "output": "dist"
     },
     "files": [
-      "**/*"
+      "**/*",
+      "!.env",
+      "!.env.*"
     ],
     "npmRebuild": false,
     "forceCodeSigning": false,
@@ -58,7 +60,7 @@
     "mac": {
       "target": [
         {
-          "target": "dmg",
+          "target": "zip",
           "arch": [
             "x64",
             "arm64"
@@ -87,8 +89,7 @@
     "publish": {
       "provider": "github",
       "owner": "Hassan-JERRAR",
-      "repo": "Tiktok_live_manager",
-      "private": true
+      "repo": "Tiktok_live_manager"
     }
   }
 }

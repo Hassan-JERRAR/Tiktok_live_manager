@@ -3,10 +3,7 @@ const { dialog, shell } = require("electron");
 const EventEmitter = require("events");
 const logger = require("../../utils/logger");
 const config = require("../../config/app-config");
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
-const { app } = require('electron');
+const updateConfig = require("../../config/update-config");
 
 class UpdateManager extends EventEmitter {
     constructor() {
@@ -29,14 +26,9 @@ class UpdateManager extends EventEmitter {
     }
 
     setupAutoUpdater() {
-        // Configuration du serveur de mise à jour pour repository privé
-        if (!process.env.GH_TOKEN) {
-            logger.error("GH_TOKEN manquant pour l'auto-updater");
-            return;
-        }
-
-        // Désactiver complètement autoUpdater et utiliser notre implémentation custom
-        this.useCustomUpdater = true;
+        // Configuration electron-updater uniquement
+        autoUpdater.autoDownload = updateConfig.options.autoDownload;
+        autoUpdater.autoInstallOnAppQuit = updateConfig.options.autoInstallOnAppQuit;
         
         // Configuration des logs pour le debug
         autoUpdater.logger = logger;
@@ -48,21 +40,6 @@ class UpdateManager extends EventEmitter {
         });
 
         autoUpdater.on("update-available", (info) => {
-            const currentVersion = require("../../../package.json").version;
-            logger.info(`Mise à jour détectée - Actuelle: ${currentVersion}, Disponible: ${info.version}`);
-            
-            // Vérifier si c'est vraiment une nouvelle version
-            const comparison = this.compareVersions(currentVersion, info.version);
-            if (comparison >= 0) {
-                logger.info("La version disponible n'est pas plus récente que la version actuelle");
-                this.emit("update-not-available", { 
-                    version: currentVersion,
-                    availableVersion: info.version,
-                    isUpToDate: comparison === 0
-                });
-                return;
-            }
-            
             logger.info("Mise à jour disponible:", info.version);
             this.updateAvailable = true;
             this.emit("update-available", info);
@@ -117,8 +94,14 @@ class UpdateManager extends EventEmitter {
                 logger.info("Vérification manuelle des mises à jour");
             }
 
-            // Toujours utiliser notre implémentation personnalisée pour les repos privés
-            return await this.checkForUpdatesCustom(manual);
+            logger.info("Vérification des mises à jour via electron-updater");
+            const result = await autoUpdater.checkForUpdates();
+            
+            if (manual && !result) {
+                this.showNoUpdateDialog();
+            }
+            
+            return result ? { updateInfo: result.updateInfo } : { noUpdate: true };
         } catch (error) {
             logger.error("Erreur lors de la vérification des mises à jour:", error);
             if (manual) {
@@ -128,429 +111,29 @@ class UpdateManager extends EventEmitter {
         }
     }
 
-    // Implémentation personnalisée pour repos privés GitHub
-    async checkForUpdatesCustom(manual = false) {
-        const currentVersion = require("../../../package.json").version;
-        logger.info(`Version actuelle: ${currentVersion}`);
 
-        try {
-            // Récupérer la dernière release via l'API GitHub
-            const releaseInfo = await this.getLatestReleaseFromGitHub();
-            
-            if (!releaseInfo) {
-                const info = { currentVersion };
-                if (manual) {
-                    this.showNoUpdateDialog(info);
-                }
-                return { noUpdate: true, currentVersion, info };
-            }
-
-            // Comparer les versions
-            const comparison = this.compareVersions(currentVersion, releaseInfo.tag_name.replace('v', ''));
-            
-            if (comparison >= 0) {
-                logger.info("Aucune mise à jour disponible");
-                const info = { 
-                    currentVersion,
-                    availableVersion: releaseInfo.tag_name.replace('v', ''),
-                    isUpToDate: comparison === 0
-                };
-                
-                if (manual) {
-                    this.showNoUpdateDialog(info);
-                }
-                return { noUpdate: true, currentVersion, info };
-            }
-
-            // Mise à jour disponible
-            logger.info(`Mise à jour disponible: ${releaseInfo.tag_name}`);
-            this.updateAvailable = true;
-            this.latestRelease = releaseInfo;
-            
-            const updateInfo = {
-                version: releaseInfo.tag_name.replace('v', ''),
-                releaseNotes: releaseInfo.body,
-                releaseDate: releaseInfo.published_at,
-                releaseName: releaseInfo.name
-            };
-
-            this.emit("update-available", updateInfo);
-            if (manual) {
-                this.showUpdateAvailableDialog(updateInfo);
-            }
-            
-            return { updateInfo };
-
-        } catch (error) {
-            logger.error("Erreur lors de la vérification des mises à jour:", error);
-            if (manual) {
-                this.showUpdateErrorDialog(error);
-            }
-            return { error: error.message };
-        }
-    }
-
-    // Récupérer la dernière release depuis l'API GitHub
-    async getLatestReleaseFromGitHub() {
-        return new Promise((resolve, reject) => {
-            const options = {
-                hostname: 'api.github.com',
-                path: '/repos/Hassan-JERRAR/Tiktok_live_manager/releases/latest',
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${process.env.GH_TOKEN}`,
-                    'User-Agent': 'TikTok-Live-Manager-Updater',
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            };
-
-            const req = https.request(options, (res) => {
-                let data = '';
-
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
-
-                res.on('end', () => {
-                    try {
-                        if (res.statusCode === 200) {
-                            const release = JSON.parse(data);
-                            resolve(release);
-                        } else if (res.statusCode === 404) {
-                            logger.info("Aucune release trouvée");
-                            resolve(null);
-                        } else {
-                            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-                        }
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            });
-
-            req.on('error', (error) => {
-                reject(error);
-            });
-
-            req.end();
-        });
-    }
 
     downloadUpdate() {
-        return new Promise((resolve, reject) => {
-            if (!this.updateAvailable) {
-                const error = "Aucune mise à jour disponible pour le téléchargement";
-                logger.warn(error);
-                reject(new Error(error));
-                return;
-            }
-
-            // Toujours utiliser notre implémentation personnalisée
-            this.downloadUpdateCustom().then(resolve).catch(reject);
-        });
-    }
-
-    // Téléchargement personnalisé pour repos privés
-    async downloadUpdateCustom() {
-        if (!this.latestRelease) {
-            throw new Error("Aucune information de release disponible");
+        if (!this.updateAvailable) {
+            const error = "Aucune mise à jour disponible pour le téléchargement";
+            logger.warn(error);
+            return Promise.reject(new Error(error));
         }
 
-        logger.info("Début du téléchargement personnalisé de la mise à jour");
-        this.emit("download-started");
-        
-        if (this.mainWindow) {
-            this.mainWindow.webContents.send('update-download-started');
-        }
-
-        try {
-            // Trouver l'asset approprié pour la plateforme actuelle
-            const platform = process.platform;
-            const arch = process.arch;
-            let assetName = '';
-            
-            if (platform === 'darwin') {
-                // Déterminer l'architecture correcte pour macOS
-                let targetArch = 'x64'; // Par défaut Intel
-                if (arch === 'arm64') {
-                    targetArch = 'arm64';
-                }
-                
-                // Chercher le DMG correspondant à l'architecture
-                let asset;
-                if (targetArch === 'x64') {
-                    // Pour Intel, chercher un DMG qui ne contient PAS arm64
-                    asset = this.latestRelease.assets.find(a => 
-                        a.name.endsWith('.dmg') && !a.name.includes('arm64')
-                    );
-                } else {
-                    // Pour ARM64, chercher un DMG qui contient arm64
-                    asset = this.latestRelease.assets.find(a => 
-                        a.name.endsWith('.dmg') && a.name.includes('arm64')
-                    );
-                }
-                
-                if (asset) {
-                    assetName = asset.name;
-                } else {
-                    // Fallback: chercher n'importe quel DMG si aucune architecture spécifique trouvée
-                    assetName = this.latestRelease.assets.find(asset => 
-                        asset.name.endsWith('.dmg')
-                    )?.name;
-                }
-                
-                logger.info(`Architecture détectée: ${arch}, recherche asset avec: ${targetArch}`);
-            } else if (platform === 'win32') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.exe')
-                )?.name;
-            } else if (platform === 'linux') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.AppImage')
-                )?.name;
-            }
-
-            if (!assetName) {
-                throw new Error(`Aucun asset trouvé pour la plateforme ${platform}`);
-            }
-
-            const asset = this.latestRelease.assets.find(a => a.name === assetName);
-            const downloadPath = path.join(app.getPath('temp'), assetName);
-
-            // Télécharger l'asset avec authentification
-            await this.downloadAsset(asset, downloadPath);
-            
-            logger.info("Mise à jour téléchargée avec succès");
-            this.updateDownloaded = true;
-            
-            const updateInfo = {
-                version: this.latestRelease.tag_name.replace('v', ''),
-                downloadPath: downloadPath,
-                assetName: assetName
-            };
-
-            this.emit("update-downloaded", updateInfo);
-            
-            if (this.mainWindow) {
-                this.mainWindow.webContents.send('update-downloaded', updateInfo);
-            }
-            
-            this.showUpdateDownloadedDialog(updateInfo);
-            
-            return { success: true, info: updateInfo };
-
-        } catch (error) {
-            logger.error("Erreur lors du téléchargement:", error);
-            this.emit("update-error", error);
-            throw error;
-        }
+        logger.info("Téléchargement de la mise à jour via electron-updater");
+        return autoUpdater.downloadUpdate();
     }
 
-    // Télécharger un asset GitHub avec authentification
-    async downloadAsset(asset, downloadPath) {
-        return new Promise((resolve, reject) => {
-            const options = {
-                hostname: 'api.github.com',
-                path: `/repos/Hassan-JERRAR/Tiktok_live_manager/releases/assets/${asset.id}`,
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${process.env.GH_TOKEN}`,
-                    'User-Agent': 'TikTok-Live-Manager-Updater',
-                    'Accept': 'application/octet-stream'
-                }
-            };
 
-            const file = fs.createWriteStream(downloadPath);
-            let downloadedBytes = 0;
-            const totalBytes = asset.size;
 
-            const req = https.request(options, (res) => {
-                if (res.statusCode === 302 || res.statusCode === 301) {
-                    // Redirection vers l'URL de téléchargement
-                    const redirectUrl = res.headers.location;
-                    logger.info("Redirection vers:", redirectUrl);
-                    
-                    // Suivre la redirection SANS authentification (Azure Storage)
-                    const redirectReq = https.get(redirectUrl, {
-                        headers: {
-                            'User-Agent': 'TikTok-Live-Manager-Updater'
-                        }
-                    }, (redirectRes) => {
-                        this.handleDownloadResponse(redirectRes, file, downloadedBytes, totalBytes, resolve, reject);
-                    });
-                    
-                    redirectReq.on('error', reject);
-                    return;
-                }
-
-                this.handleDownloadResponse(res, file, downloadedBytes, totalBytes, resolve, reject);
-            });
-
-            req.on('error', (error) => {
-                fs.unlink(downloadPath, () => {});
-                reject(error);
-            });
-
-            req.end();
-        });
-    }
-
-    // Gérer la réponse de téléchargement avec progress
-    handleDownloadResponse(res, file, downloadedBytes, totalBytes, resolve, reject) {
-        if (res.statusCode !== 200) {
-            file.close();
-            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
-            return;
-        }
-
-        res.on('data', (chunk) => {
-            downloadedBytes += chunk.length;
-            const percent = totalBytes > 0 ? (downloadedBytes / totalBytes) * 100 : 0;
-            
-            this.emit("download-progress", {
-                percent: percent,
-                transferred: downloadedBytes,
-                total: totalBytes
-            });
-            
-            if (this.mainWindow) {
-                this.mainWindow.webContents.send('update-download-progress', {
-                    percent: percent,
-                    transferred: downloadedBytes,
-                    total: totalBytes
-                });
-            }
-        });
-
-        res.pipe(file);
-
-        file.on('finish', () => {
-            file.close();
-            resolve();
-        });
-
-        file.on('error', (error) => {
-            fs.unlink(file.path, () => {});
-            reject(error);
-        });
-
-        res.on('error', (error) => {
-            file.close();
-            reject(error);
-        });
-    }
 
     quitAndInstall() {
         if (this.updateDownloaded) {
             logger.info("Installation de la mise à jour et redémarrage");
-            
-            // Toujours utiliser notre implémentation personnalisée
-            if (this.latestRelease) {
-                this.installUpdateCustom();
-            } else {
-                logger.error("Aucune information de release disponible pour l'installation");
-            }
+            autoUpdater.quitAndInstall();
         }
     }
 
-    // Installation personnalisée pour repos privés
-    installUpdateCustom() {
-        try {
-            // Trouver l'asset approprié pour la plateforme actuelle
-            const platform = process.platform;
-            const arch = process.arch;
-            let assetName = '';
-            
-            if (platform === 'darwin') {
-                // Déterminer l'architecture correcte pour macOS
-                let targetArch = 'x64'; // Par défaut Intel
-                if (arch === 'arm64') {
-                    targetArch = 'arm64';
-                }
-                
-                // Chercher le DMG correspondant à l'architecture
-                let asset;
-                if (targetArch === 'x64') {
-                    // Pour Intel, chercher un DMG qui ne contient PAS arm64
-                    asset = this.latestRelease.assets.find(a => 
-                        a.name.endsWith('.dmg') && !a.name.includes('arm64')
-                    );
-                } else {
-                    // Pour ARM64, chercher un DMG qui contient arm64
-                    asset = this.latestRelease.assets.find(a => 
-                        a.name.endsWith('.dmg') && a.name.includes('arm64')
-                    );
-                }
-                
-                if (asset) {
-                    assetName = asset.name;
-                } else {
-                    // Fallback: chercher n'importe quel DMG si aucune architecture spécifique trouvée
-                    assetName = this.latestRelease.assets.find(asset => 
-                        asset.name.endsWith('.dmg')
-                    )?.name;
-                }
-                
-                logger.info(`Architecture détectée: ${arch}, recherche asset avec: ${targetArch}`);
-            } else if (platform === 'win32') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.exe')
-                )?.name;
-            } else if (platform === 'linux') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.AppImage')
-                )?.name;
-            }
-
-            if (!assetName) {
-                throw new Error(`Aucun asset trouvé pour la plateforme ${platform}`);
-            }
-
-            const downloadPath = path.join(app.getPath('temp'), assetName);
-            
-            // Vérifier que le fichier existe
-            if (!fs.existsSync(downloadPath)) {
-                throw new Error("Fichier de mise à jour introuvable");
-            }
-
-            logger.info(`Ouverture du fichier de mise à jour: ${downloadPath}`);
-
-            if (platform === 'darwin') {
-                // Sur macOS, ouvrir le DMG
-                const { spawn } = require('child_process');
-                spawn('open', [downloadPath], { detached: true });
-                
-                // Fermer l'application après un délai pour permettre l'ouverture du DMG
-                setTimeout(() => {
-                    app.quit();
-                }, 2000);
-                
-            } else if (platform === 'win32') {
-                // Sur Windows, lancer l'installateur
-                const { spawn } = require('child_process');
-                spawn(downloadPath, [], { detached: true });
-                app.quit();
-                
-            } else if (platform === 'linux') {
-                // Sur Linux, rendre le fichier exécutable et l'ouvrir
-                const { spawn } = require('child_process');
-                fs.chmodSync(downloadPath, '755');
-                spawn(downloadPath, [], { detached: true });
-                app.quit();
-            }
-
-        } catch (error) {
-            logger.error("Erreur lors de l'installation:", error);
-            
-            // Afficher une boîte de dialogue d'erreur
-            if (this.mainWindow) {
-                dialog.showErrorBox(
-                    "Erreur d'installation",
-                    `Impossible d'installer automatiquement la mise à jour: ${error.message}\n\nVeuillez installer manuellement le fichier téléchargé.`
-                );
-            }
-        }
-    }
 
     // Fonction pour comparer les versions (semver)
     compareVersions(version1, version2) {
@@ -592,7 +175,7 @@ class UpdateManager extends EventEmitter {
                 this.downloadUpdate();
             } else if (result.response === 2) {
                 shell.openExternal(
-                    `https://github.com/${config.build.owner}/${config.build.repo}/releases/tag/v${info.version}`
+                    `https://github.com/${updateConfig.github.owner}/${updateConfig.github.repo}/releases/tag/v${info.version}`
                 );
             }
         });
@@ -664,35 +247,6 @@ class UpdateManager extends EventEmitter {
         };
     }
 
-    // Publier une release draft pour la rendre disponible
-    async publishRelease(releaseId) {
-        const token = process.env.GH_TOKEN;
-        if (!token) {
-            throw new Error("Token GitHub manquant");
-        }
-
-        try {
-            const response = await fetch(`https://api.github.com/repos/Hassan-JERRAR/Tiktok_live_manager/releases/${releaseId}`, {
-                method: 'PATCH',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ draft: false })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Erreur HTTP: ${response.status}`);
-            }
-
-            logger.info(`Release ${releaseId} publiée avec succès`);
-            return await response.json();
-        } catch (error) {
-            logger.error("Erreur lors de la publication de la release:", error);
-            throw error;
-        }
-    }
 
     async enableAutoUpdate(enabled) {
         autoUpdater.autoDownload = enabled;

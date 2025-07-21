@@ -164,15 +164,17 @@ EventEmitter → NotificationManager → UI Renderer
 ## OTA Update System
 
 ### Configuration Requirements
-- GitHub token in `.env` file: `GH_TOKEN=your_token_here`
-- Private repository: Hassan-JERRAR/Tiktok_live_manager
+- Public repository: Hassan-JERRAR/Tiktok_live_manager
+- No GitHub token required (repo is now public)
 - Auto-updater checks every 24 hours by default
+- Optional custom update server support via environment variables
 
 ### Update Flow
-1. UpdateManager checks for releases via GitHub API
-2. Downloads updates using electron-updater
+1. UpdateManager checks for releases via GitHub API (no authentication needed)
+2. Downloads updates using custom implementation or electron-updater
 3. Prompts user for installation on app quit
 4. Supports prerelease and custom update servers
+5. Automatically detects platform and architecture for correct asset selection
 
 ## Important Notes
 
