@@ -239,7 +239,7 @@ class UpdateManager extends EventEmitter {
                 path: '/repos/Hassan-JERRAR/Tiktok_live_manager/releases/latest',
                 method: 'GET',
                 headers: {
-                    'Authorization': `token ${process.env.GH_TOKEN}`,
+                    'Authorization': `Bearer ${process.env.GH_TOKEN}`,
                     'User-Agent': 'TikTok-Live-Manager-Updater',
                     'Accept': 'application/vnd.github.v3+json'
                 }
@@ -403,7 +403,7 @@ class UpdateManager extends EventEmitter {
                 path: `/repos/Hassan-JERRAR/Tiktok_live_manager/releases/assets/${asset.id}`,
                 method: 'GET',
                 headers: {
-                    'Authorization': `token ${process.env.GH_TOKEN}`,
+                    'Authorization': `Bearer ${process.env.GH_TOKEN}`,
                     'User-Agent': 'TikTok-Live-Manager-Updater',
                     'Accept': 'application/octet-stream'
                 }
@@ -422,7 +422,7 @@ class UpdateManager extends EventEmitter {
                     // Suivre la redirection avec authentification
                     const redirectReq = https.get(redirectUrl, {
                         headers: {
-                            'Authorization': `token ${process.env.GH_TOKEN}`,
+                            'Authorization': `Bearer ${process.env.GH_TOKEN}`,
                             'User-Agent': 'TikTok-Live-Manager-Updater'
                         }
                     }, (redirectRes) => {
@@ -697,7 +697,7 @@ class UpdateManager extends EventEmitter {
             const response = await fetch(`https://api.github.com/repos/Hassan-JERRAR/Tiktok_live_manager/releases/${releaseId}`, {
                 method: 'PATCH',
                 headers: {
-                    'Authorization': `token ${token}`,
+                    'Authorization': `Bearer ${token}`,
                     'Accept': 'application/vnd.github.v3+json',
                     'Content-Type': 'application/json'
                 },
