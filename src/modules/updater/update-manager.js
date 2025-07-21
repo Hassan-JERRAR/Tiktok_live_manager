@@ -117,49 +117,8 @@ class UpdateManager extends EventEmitter {
                 logger.info("Vérification manuelle des mises à jour");
             }
 
-            // Utiliser notre implémentation personnalisée pour les repos privés
-            if (this.useCustomUpdater) {
-                return await this.checkForUpdatesCustom(manual);
-            }
-
-            // Fallback vers l'auto-updater standard (pour repos publics)
-            const currentVersion = require("../../../package.json").version;
-            logger.info(`Version actuelle: ${currentVersion}`);
-
-            return new Promise((resolve) => {
-                const onUpdateAvailable = (info) => {
-                    cleanup();
-                    resolve({ updateInfo: info });
-                };
-
-                const onUpdateNotAvailable = (info) => {
-                    cleanup();
-                    if (manual) {
-                        this.showNoUpdateDialog(info);
-                    }
-                    resolve({ noUpdate: true, currentVersion, info });
-                };
-
-                const onError = (error) => {
-                    cleanup();
-                    if (manual) {
-                        this.showUpdateErrorDialog(error);
-                    }
-                    resolve({ error: error.message });
-                };
-
-                const cleanup = () => {
-                    this.off('update-available', onUpdateAvailable);
-                    this.off('update-not-available', onUpdateNotAvailable);
-                    this.off('update-error', onError);
-                };
-
-                this.once('update-available', onUpdateAvailable);
-                this.once('update-not-available', onUpdateNotAvailable);
-                this.once('update-error', onError);
-
-                autoUpdater.checkForUpdates().catch(onError);
-            });
+            // Toujours utiliser notre implémentation personnalisée pour les repos privés
+            return await this.checkForUpdatesCustom(manual);
         } catch (error) {
             logger.error("Erreur lors de la vérification des mises à jour:", error);
             if (manual) {
@@ -286,44 +245,8 @@ class UpdateManager extends EventEmitter {
                 return;
             }
 
-            // Utiliser notre implémentation personnalisée pour les repos privés
-            if (this.useCustomUpdater) {
-                this.downloadUpdateCustom().then(resolve).catch(reject);
-                return;
-            }
-
-            // Fallback vers l'auto-updater standard
-            logger.info("Début du téléchargement de la mise à jour");
-            this.emit("download-started");
-            
-            if (this.mainWindow) {
-                this.mainWindow.webContents.send('update-download-started');
-            }
-
-            const onDownloaded = (info) => {
-                cleanup();
-                resolve({ success: true, info });
-            };
-
-            const onError = (error) => {
-                cleanup();
-                reject(error);
-            };
-
-            const cleanup = () => {
-                this.off('update-downloaded', onDownloaded);
-                this.off('update-error', onError);
-            };
-
-            this.once('update-downloaded', onDownloaded);
-            this.once('update-error', onError);
-            
-            try {
-                autoUpdater.downloadUpdate();
-            } catch (error) {
-                cleanup();
-                reject(error);
-            }
+            // Toujours utiliser notre implémentation personnalisée
+            this.downloadUpdateCustom().then(resolve).catch(reject);
         });
     }
 
@@ -343,12 +266,40 @@ class UpdateManager extends EventEmitter {
         try {
             // Trouver l'asset approprié pour la plateforme actuelle
             const platform = process.platform;
+            const arch = process.arch;
             let assetName = '';
             
             if (platform === 'darwin') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.dmg')
-                )?.name;
+                // Déterminer l'architecture correcte pour macOS
+                let targetArch = 'x64'; // Par défaut Intel
+                if (arch === 'arm64') {
+                    targetArch = 'arm64';
+                }
+                
+                // Chercher le DMG correspondant à l'architecture
+                let asset;
+                if (targetArch === 'x64') {
+                    // Pour Intel, chercher un DMG qui ne contient PAS arm64
+                    asset = this.latestRelease.assets.find(a => 
+                        a.name.endsWith('.dmg') && !a.name.includes('arm64')
+                    );
+                } else {
+                    // Pour ARM64, chercher un DMG qui contient arm64
+                    asset = this.latestRelease.assets.find(a => 
+                        a.name.endsWith('.dmg') && a.name.includes('arm64')
+                    );
+                }
+                
+                if (asset) {
+                    assetName = asset.name;
+                } else {
+                    // Fallback: chercher n'importe quel DMG si aucune architecture spécifique trouvée
+                    assetName = this.latestRelease.assets.find(asset => 
+                        asset.name.endsWith('.dmg')
+                    )?.name;
+                }
+                
+                logger.info(`Architecture détectée: ${arch}, recherche asset avec: ${targetArch}`);
             } else if (platform === 'win32') {
                 assetName = this.latestRelease.assets.find(asset => 
                     asset.name.endsWith('.exe')
@@ -493,11 +444,11 @@ class UpdateManager extends EventEmitter {
         if (this.updateDownloaded) {
             logger.info("Installation de la mise à jour et redémarrage");
             
-            // Utiliser notre implémentation personnalisée pour les repos privés
-            if (this.useCustomUpdater && this.latestRelease) {
+            // Toujours utiliser notre implémentation personnalisée
+            if (this.latestRelease) {
                 this.installUpdateCustom();
             } else {
-                autoUpdater.quitAndInstall();
+                logger.error("Aucune information de release disponible pour l'installation");
             }
         }
     }
@@ -507,12 +458,40 @@ class UpdateManager extends EventEmitter {
         try {
             // Trouver l'asset approprié pour la plateforme actuelle
             const platform = process.platform;
+            const arch = process.arch;
             let assetName = '';
             
             if (platform === 'darwin') {
-                assetName = this.latestRelease.assets.find(asset => 
-                    asset.name.endsWith('.dmg')
-                )?.name;
+                // Déterminer l'architecture correcte pour macOS
+                let targetArch = 'x64'; // Par défaut Intel
+                if (arch === 'arm64') {
+                    targetArch = 'arm64';
+                }
+                
+                // Chercher le DMG correspondant à l'architecture
+                let asset;
+                if (targetArch === 'x64') {
+                    // Pour Intel, chercher un DMG qui ne contient PAS arm64
+                    asset = this.latestRelease.assets.find(a => 
+                        a.name.endsWith('.dmg') && !a.name.includes('arm64')
+                    );
+                } else {
+                    // Pour ARM64, chercher un DMG qui contient arm64
+                    asset = this.latestRelease.assets.find(a => 
+                        a.name.endsWith('.dmg') && a.name.includes('arm64')
+                    );
+                }
+                
+                if (asset) {
+                    assetName = asset.name;
+                } else {
+                    // Fallback: chercher n'importe quel DMG si aucune architecture spécifique trouvée
+                    assetName = this.latestRelease.assets.find(asset => 
+                        asset.name.endsWith('.dmg')
+                    )?.name;
+                }
+                
+                logger.info(`Architecture détectée: ${arch}, recherche asset avec: ${targetArch}`);
             } else if (platform === 'win32') {
                 assetName = this.latestRelease.assets.find(asset => 
                     asset.name.endsWith('.exe')
