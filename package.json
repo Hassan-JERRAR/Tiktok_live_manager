@@ -1,6 +1,6 @@
 {
   "name": "tiktok-live-app",
-  "version": "1.0.14",
+  "version": "1.0.13",
   "description": "Application desktop pour gérer TikTok Live et l'impression d'étiquettes",
   "main": "main.js",
   "scripts": {

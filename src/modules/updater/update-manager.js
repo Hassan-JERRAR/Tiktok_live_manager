@@ -419,10 +419,9 @@ class UpdateManager extends EventEmitter {
                     const redirectUrl = res.headers.location;
                     logger.info("Redirection vers:", redirectUrl);
                     
-                    // Suivre la redirection avec authentification
+                    // Suivre la redirection SANS authentification (Azure Storage)
                     const redirectReq = https.get(redirectUrl, {
                         headers: {
-                            'Authorization': `Bearer ${process.env.GH_TOKEN}`,
                             'User-Agent': 'TikTok-Live-Manager-Updater'
                         }
                     }, (redirectRes) => {
