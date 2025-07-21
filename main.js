@@ -2,16 +2,15 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
+// Charger les variables d'environnement AVANT tout import
+const envPath = path.join(__dirname, ".env");
+if (fs.existsSync(envPath)) {
+    require("dotenv").config({ path: envPath });
+}
+
 // Import du gestionnaire de mise à jour
 let UpdateManager;
 try {
-    // Charger les variables d'environnement si le fichier .env existe
-    const path = require("path");
-    const envPath = path.join(__dirname, ".env");
-    if (require("fs").existsSync(envPath)) {
-        require("dotenv").config({ path: envPath });
-    }
-    
     UpdateManager = require("./src/modules/updater/update-manager");
 } catch (error) {
     console.log("⚠️ UpdateManager non disponible:", error.message);
