@@ -4,7 +4,7 @@
   "description": "Application desktop pour gérer TikTok Live et l'impression d'étiquettes",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "electron . --disable-gpu",
     "dev": "electron . --dev",
     "build": "electron-builder",
     "build-win": "electron-builder --win",
@@ -49,6 +49,8 @@
     "files": [
       "**/*"
     ],
+    "npmRebuild": false,
+    "forceCodeSigning": false,
     "win": {
       "target": "nsis",
       "icon": "assets/icon.ico"
@@ -67,8 +69,8 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "perMachine": true,
-      "allowElevation": true,
+      "perMachine": false,
+      "allowElevation": false,
       "runAfterFinish": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
