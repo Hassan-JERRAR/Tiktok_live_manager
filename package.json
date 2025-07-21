@@ -1,19 +1,28 @@
 {
   "name": "tiktok-live-app",
-  "version": "1.0.19",
+  "version": "1.0.17",
   "description": "Application desktop pour gérer TikTok Live et l'impression d'étiquettes",
   "main": "main.js",
   "scripts": {
     "start": "electron . --disable-gpu",
     "dev": "electron . --dev",
     "build": "electron-builder",
-    "build-win": "electron-builder --win",
-    "build-mac": "electron-builder --mac",
-    "build-linux": "electron-builder --linux",
+    "build-win": "electron-builder --win --x64",
+    "build-mac": "electron-builder --mac --universal",
+    "build-mac-intel": "electron-builder --mac --x64",
+    "build-mac-silicon": "electron-builder --mac --arm64",
+    "build-linux": "electron-builder --linux --x64",
+    "build-all": "electron-builder --mac --win --linux",
     "build-publish": "electron-builder --publish=always",
-    "build-publish-win": "electron-builder --win --publish=always",
-    "build-publish-mac": "electron-builder --mac --publish=always",
-    "build-publish-linux": "electron-builder --linux --publish=always"
+    "build-publish-win": "electron-builder --win --x64 --publish=always",
+    "build-publish-mac": "electron-builder --mac --universal --publish=always",
+    "build-publish-mac-intel": "electron-builder --mac --x64 --publish=always",
+    "build-publish-mac-silicon": "electron-builder --mac --arm64 --publish=always",
+    "build-publish-linux": "electron-builder --linux --x64 --publish=always",
+    "build-publish-all": "electron-builder --mac --win --linux --publish=always",
+    "publish-only": "electron-builder --publish=always --mac --win --linux",
+    "clean": "rm -rf dist node_modules/.cache",
+    "clean-build": "npm run clean && npm run build-all"
   },
   "keywords": [
     "tiktok",
@@ -49,34 +58,51 @@
     "files": [
       "**/*",
       "!.env",
-      "!.env.*"
+      "!.env.*",
+      "!README.md",
+      "!*.md",
+      "!node_modules/electron/**/*",
+      "!node_modules/electron-builder/**/*"
     ],
     "npmRebuild": false,
     "forceCodeSigning": false,
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico",
+      "publisherName": "IzatColis",
+      "artifactName": "${productName}-${version}-win-${arch}.${ext}"
     },
     "mac": {
       "target": [
         {
           "target": "zip",
-          "arch": "x64"
-        },
-        {
-          "target": "zip",
-          "arch": "arm64"
+          "arch": ["x64", "arm64"]
         }
       ],
       "icon": "assets/icon.icns",
       "category": "public.app-category.business",
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "minimumSystemVersion": "10.14.0"
+      "minimumSystemVersion": "10.15.0",
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "artifactName": "${productName}-${version}-mac-${arch}.${ext}",
+      "type": "distribution"
     },
     "linux": {
-      "target": "AppImage",
-      "icon": "assets/icon.png"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "artifactName": "${productName}-${version}-linux-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
@@ -85,12 +111,17 @@
       "allowElevation": false,
       "runAfterFinish": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     },
     "publish": {
       "provider": "github",
       "owner": "Hassan-JERRAR",
-      "repo": "Tiktok_live_manager"
+      "repo": "Tiktok_live_manager",
+      "releaseType": "release",
+      "publishAutoUpdate": true
     }
   }
 }

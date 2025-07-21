@@ -19,12 +19,12 @@ TikTok Live Manager is an Electron desktop application for managing TikTok Live 
 ```bash
 # Development
 npm run dev              # Start in development mode with DevTools
-npm start                # Start in production mode
+npm start                # Start in production mode with --disable-gpu flag
 
 # Building
 npm run build           # Build for current platform
 npm run build-win       # Build for Windows (NSIS installer)
-npm run build-mac       # Build for macOS (DMG)
+npm run build-mac       # Build for macOS (dual-arch ZIP: x64 + arm64)
 npm run build-linux     # Build for Linux (AppImage)
 
 # Publishing (with auto-updater)
@@ -34,11 +34,14 @@ npm run build-publish-mac       # Build and publish for macOS
 npm run build-publish-linux     # Build and publish for Linux
 ```
 
+**Note**: No testing framework or linting tools are currently configured in this project.
+
 ## Architecture Overview
 
 ### Entry Points
 - **main.js**: Legacy main process (simpler, direct implementation)
 - **src/main-modular.js**: Modern modular main process (recommended for new features)
+- **start.js**: Debug startup script for development
 - **index.html**: Frontend interface with tabbed layout
 - **renderer.js**: Frontend logic for UI interactions
 
@@ -52,15 +55,22 @@ npm run build-publish-linux     # Build and publish for Linux
 
 ### Services (src/services/)
 - **DataService**: Central data hub managing all persistence, statistics, and Set↔Array conversions
-- **FileManager**: File operations with atomic writes and automatic backup (.backup files)
 
 ### Utilities (src/utils/)
 - **EventEmitter**: Central event bus for inter-module communication
 - **Logger**: Structured logging with different levels for development/production
+- **FileManager**: File operations with atomic writes and automatic backup (.backup files)
 
 ### Configuration (src/config/)
 - **app-config.js**: Centralized configuration for all modules and services
 - **update-config.js**: OTA update configuration with GitHub token and custom server support
+
+### Components (src/components/)
+- **Dashboard**: Main dashboard UI component
+- **Chat**: TikTok Live chat interface
+- **History**: Print history management
+- **Print-system**: Label printing interface
+- **User-management**: Verified users management
 
 ### Data Storage
 - **data/verified-users.json**: List of verified TikTok users (Set converted to Array)
@@ -161,17 +171,25 @@ EventEmitter → NotificationManager → UI Renderer
 - Verified users stored as Set in memory, Array in JSON for persistence
 - Default verified user: "vonix.xz"
 
+## Environment Configuration
+
+Create a `.env` file from `.env.example` for custom settings:
+- **GH_TOKEN**: GitHub token (required for publishing releases)
+- **UPDATE_SERVER_URL**: Custom update server (optional)  
+- **NODE_ENV**: Environment (development/production)
+- **DEBUG_UPDATES**: Enable update debugging
+
 ## OTA Update System
 
 ### Configuration Requirements
-- Public repository: Hassan-JERRAR/Tiktok_live_manager
-- No GitHub token required (repo is now public)
+- Repository: Hassan-JERRAR/Tiktok_live_manager
+- GitHub token required for publishing (set via GH_TOKEN in .env)
 - Auto-updater checks every 24 hours by default
 - Optional custom update server support via environment variables
 
 ### Update Flow
-1. UpdateManager checks for releases via GitHub API (no authentication needed)
-2. Downloads updates using custom implementation or electron-updater
+1. UpdateManager checks for releases via GitHub API (authentication via GH_TOKEN when needed)
+2. Downloads updates using electron-updater
 3. Prompts user for installation on app quit
 4. Supports prerelease and custom update servers
 5. Automatically detects platform and architecture for correct asset selection

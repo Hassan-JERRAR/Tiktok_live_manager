@@ -1,9 +1,10 @@
 const { autoUpdater } = require("electron-updater");
-const { dialog, shell } = require("electron");
+const { dialog, shell, app } = require("electron");
 const EventEmitter = require("events");
 const logger = require("../../utils/logger");
 const config = require("../../config/app-config");
 const updateConfig = require("../../config/update-config");
+const os = require("os");
 
 class UpdateManager extends EventEmitter {
     constructor() {
@@ -26,29 +27,27 @@ class UpdateManager extends EventEmitter {
     }
 
     setupAutoUpdater() {
-        // Configuration electron-updater uniquement
+        // Configuration electron-updater
         autoUpdater.autoDownload = updateConfig.options.autoDownload;
         autoUpdater.autoInstallOnAppQuit = updateConfig.options.autoInstallOnAppQuit;
-        
-        // Forcer l'architecture correcte sur macOS
-        if (process.platform === 'darwin') {
-            const arch = process.arch;
-            logger.info(`Architecture détectée: ${arch}`);
-            
-            // Configurer l'URL de mise à jour avec l'architecture
-            if (updateConfig.github) {
-                const feedURL = `https://github.com/${updateConfig.github.owner}/${updateConfig.github.repo}`;
-                autoUpdater.setFeedURL({
-                    provider: 'github',
-                    owner: updateConfig.github.owner,
-                    repo: updateConfig.github.repo,
-                    private: updateConfig.github.private || false
-                });
-            }
-        }
+        autoUpdater.allowDowngrade = false;
+        autoUpdater.allowPrerelease = updateConfig.options.allowPrerelease;
         
         // Configuration des logs pour le debug
         autoUpdater.logger = logger;
+        autoUpdater.logger.transports.file.level = 'info';
+        
+        // Forcer les mises à jour en mode développement
+        if (process.env.NODE_ENV === 'development' || process.defaultApp) {
+            autoUpdater.forceDevUpdateConfig = true;
+            logger.info("Mode développement détecté - forçage des mises à jour activé");
+        }
+        
+        // Configuration avancée selon la plateforme
+        this.configurePlatformSpecific();
+        
+        // Configuration du provider GitHub
+        this.configureGitHubProvider();
 
         // Événements d'auto-updater
         autoUpdater.on("checking-for-update", () => {
@@ -58,6 +57,7 @@ class UpdateManager extends EventEmitter {
 
         autoUpdater.on("update-available", (info) => {
             logger.info("Mise à jour disponible:", info.version);
+            logger.info("Info complète:", JSON.stringify(info, null, 2));
             this.updateAvailable = true;
             this.emit("update-available", info);
             this.showUpdateAvailableDialog(info);
@@ -105,22 +105,153 @@ class UpdateManager extends EventEmitter {
         });
     }
 
+    /**
+     * Configuration spécifique à la plateforme
+     */
+    configurePlatformSpecific() {
+        const platform = process.platform;
+        const arch = this.getSystemArchitecture();
+        
+        logger.info(`Plateforme: ${platform}, Architecture: ${arch}`);
+        
+        if (platform === 'darwin') {
+            // Configuration macOS avec détection d'architecture précise
+            this.configureMacOS(arch);
+        } else if (platform === 'win32') {
+            // Configuration Windows
+            this.configureWindows(arch);
+        } else if (platform === 'linux') {
+            // Configuration Linux
+            this.configureLinux(arch);
+        }
+    }
+
+    /**
+     * Configuration du provider GitHub
+     */
+    configureGitHubProvider() {
+        if (updateConfig.github) {
+            const feedConfig = {
+                provider: 'github',
+                owner: updateConfig.github.owner,
+                repo: updateConfig.github.repo,
+                private: updateConfig.github.private || false
+            };
+
+            // Ajouter le token si disponible
+            if (process.env.GH_TOKEN) {
+                feedConfig.token = process.env.GH_TOKEN;
+                logger.info("Token GitHub configuré pour les mises à jour");
+            }
+
+            autoUpdater.setFeedURL(feedConfig);
+            logger.info(`Provider GitHub configuré: ${feedConfig.owner}/${feedConfig.repo}`);
+        }
+    }
+
+    /**
+     * Détection précise de l'architecture système
+     */
+    getSystemArchitecture() {
+        const nodeArch = process.arch;
+        const osArch = os.arch();
+        
+        // Pour macOS, détecter Intel vs Apple Silicon
+        if (process.platform === 'darwin') {
+            // Vérifier si on est sur Apple Silicon
+            try {
+                const { execSync } = require('child_process');
+                const sysctl = execSync('sysctl -n machdep.cpu.brand_string', { encoding: 'utf8' }).trim();
+                
+                if (sysctl.includes('Apple')) {
+                    return 'arm64'; // Apple Silicon (M1, M2, M3, etc.)
+                } else {
+                    return 'x64'; // Intel Mac
+                }
+            } catch (error) {
+                logger.warn("Impossible de détecter l'architecture via sysctl, utilisation de process.arch");
+                return nodeArch === 'arm64' ? 'arm64' : 'x64';
+            }
+        }
+        
+        // Pour Windows et Linux, utiliser process.arch
+        return nodeArch === 'x64' || nodeArch === 'x86_64' ? 'x64' : nodeArch;
+    }
+
+    /**
+     * Configuration spécifique macOS
+     */
+    configureMacOS(arch) {
+        logger.info(`Configuration macOS pour architecture: ${arch}`);
+        
+        // Configuration spécifique pour les mises à jour macOS
+        autoUpdater.requestHeaders = {
+            'User-Agent': `TikTokLiveManager/${app.getVersion()} (Darwin ${os.release()}; ${arch})`
+        };
+        
+        // Configurer les entitlements pour les mises à jour
+        if (process.env.NODE_ENV !== 'development') {
+            logger.info("Configuration des entitlements macOS pour les mises à jour");
+        }
+    }
+
+    /**
+     * Configuration spécifique Windows
+     */
+    configureWindows(arch) {
+        logger.info(`Configuration Windows pour architecture: ${arch}`);
+        
+        autoUpdater.requestHeaders = {
+            'User-Agent': `TikTokLiveManager/${app.getVersion()} (Windows NT ${os.release()}; ${arch})`
+        };
+    }
+
+    /**
+     * Configuration spécifique Linux
+     */
+    configureLinux(arch) {
+        logger.info(`Configuration Linux pour architecture: ${arch}`);
+        
+        autoUpdater.requestHeaders = {
+            'User-Agent': `TikTokLiveManager/${app.getVersion()} (Linux ${os.release()}; ${arch})`
+        };
+    }
+
     async checkForUpdates(manual = false) {
         try {
             if (manual) {
                 logger.info("Vérification manuelle des mises à jour");
             }
 
+            // Afficher les informations système pour le debug
+            const currentArch = this.getSystemArchitecture();
+            const currentVersion = app.getVersion();
+            
+            logger.info(`Système actuel: ${process.platform} ${currentArch} v${currentVersion}`);
             logger.info("Vérification des mises à jour via electron-updater");
+            
+            // S'assurer que la configuration est correcte avant la vérification
+            this.configurePlatformSpecific();
+            this.configureGitHubProvider();
+            
             const result = await autoUpdater.checkForUpdates();
             
-            if (manual && !result) {
-                this.showNoUpdateDialog();
+            if (result && result.updateInfo) {
+                logger.info(`Mise à jour trouvée: ${result.updateInfo.version}`);
+                logger.info("Assets disponibles:", result.updateInfo.files?.map(f => f.url) || 'Non disponibles');
+                return { updateInfo: result.updateInfo };
+            } else {
+                logger.info("Aucune mise à jour disponible");
+                if (manual) {
+                    this.showNoUpdateDialog();
+                }
+                return { noUpdate: true };
             }
             
-            return result ? { updateInfo: result.updateInfo } : { noUpdate: true };
         } catch (error) {
             logger.error("Erreur lors de la vérification des mises à jour:", error);
+            logger.error("Stack trace:", error.stack);
+            
             if (manual) {
                 this.showUpdateErrorDialog(error);
             }
